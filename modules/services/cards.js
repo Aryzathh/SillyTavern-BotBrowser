@@ -136,7 +136,7 @@ export function deduplicateCards(cards) {
     return deduplicated;
 }
 
-// Validate and hide cards with failed image loads
+// Validate and show fallback for cards with failed image loads
 export function validateCardImages() {
     const cardThumbnails = document.querySelectorAll('.bot-browser-card-thumbnail');
     let failedCount = 0;
@@ -151,17 +151,47 @@ export function validateCardImages() {
             if (urlMatch && urlMatch[1]) {
                 const imageUrl = urlMatch[1];
 
-                // Create a test image to check if it loads
-                const testImg = new Image();
+                // Try to fetch the image to get error code
+                fetch(imageUrl, { method: 'HEAD' })
+                    .then(response => {
+                        if (!response.ok) {
+                            // Image failed to load, show fallback with error code
+                            imageDiv.style.backgroundImage = 'none';
+                            imageDiv.classList.add('image-load-failed');
 
-                testImg.onerror = () => {
-                    // Image failed to load, hide the card
-                    cardEl.style.display = 'none';
-                    failedCount++;
-                    console.log('[Bot Browser] Hidden card with failed image:', imageUrl);
-                };
+                            // Add fallback content if not already present
+                            if (!imageDiv.querySelector('.image-failed-text')) {
+                                imageDiv.innerHTML = `
+                                    <div class="image-failed-text">
+                                        <i class="fa-solid fa-image-slash"></i>
+                                        <span>Image Failed to Load</span>
+                                        <span class="error-code">Error ${response.status}</span>
+                                    </div>
+                                `;
+                            }
 
-                testImg.src = imageUrl;
+                            failedCount++;
+                            console.log(`[Bot Browser] Showing fallback for card with failed image (${response.status}):`, imageUrl);
+                        }
+                    })
+                    .catch(error => {
+                        // Network error or CORS issue
+                        imageDiv.style.backgroundImage = 'none';
+                        imageDiv.classList.add('image-load-failed');
+
+                        if (!imageDiv.querySelector('.image-failed-text')) {
+                            imageDiv.innerHTML = `
+                                <div class="image-failed-text">
+                                    <i class="fa-solid fa-image-slash"></i>
+                                    <span>Image Failed to Load</span>
+                                    <span class="error-code">Network Error</span>
+                                </div>
+                            `;
+                        }
+
+                        failedCount++;
+                        console.log('[Bot Browser] Showing fallback for card with network error:', imageUrl, error);
+                    });
             }
         }
     });

@@ -179,6 +179,65 @@ function setupDetailModalEvents(detailModal, detailOverlay, fullCard, state) {
         e.stopPropagation();
         e.stopImmediatePropagation();
     });
+
+    // Validate detail modal image and show fallback if it fails to load
+    validateDetailModalImage(detailModal, fullCard);
+}
+
+// Validate the detail modal image and show fallback if needed
+function validateDetailModalImage(detailModal, card) {
+    const imageDiv = detailModal.querySelector('.bot-browser-detail-image');
+    if (!imageDiv) return;
+
+    const bgImage = imageDiv.style.backgroundImage;
+    if (!bgImage || bgImage === 'none') return;
+
+    // Extract URL from background-image style
+    const urlMatch = bgImage.match(/url\(["']?(.+?)["']?\)/);
+    if (!urlMatch || !urlMatch[1]) return;
+
+    const imageUrl = urlMatch[1];
+
+    // Try to fetch the image to check if it loads
+    fetch(imageUrl, { method: 'HEAD' })
+        .then(response => {
+            if (!response.ok) {
+                // Image failed to load, show fallback with error code
+                imageDiv.style.backgroundImage = 'none';
+                imageDiv.classList.add('image-load-failed');
+                imageDiv.classList.remove('clickable-image');
+                imageDiv.removeAttribute('data-image-url');
+                imageDiv.removeAttribute('title');
+
+                imageDiv.innerHTML = `
+                    <div class="image-failed-text">
+                        <i class="fa-solid fa-image-slash"></i>
+                        <span>Image Failed to Load</span>
+                        <span class="error-code">Error ${response.status}</span>
+                    </div>
+                `;
+
+                console.log(`[Bot Browser] Detail modal image failed to load (${response.status}):`, imageUrl);
+            }
+        })
+        .catch(error => {
+            // Network error or CORS issue
+            imageDiv.style.backgroundImage = 'none';
+            imageDiv.classList.add('image-load-failed');
+            imageDiv.classList.remove('clickable-image');
+            imageDiv.removeAttribute('data-image-url');
+            imageDiv.removeAttribute('title');
+
+            imageDiv.innerHTML = `
+                <div class="image-failed-text">
+                    <i class="fa-solid fa-image-slash"></i>
+                    <span>Image Failed to Load</span>
+                    <span class="error-code">Network Error</span>
+                </div>
+            `;
+
+            console.log('[Bot Browser] Detail modal image network error:', imageUrl, error);
+        });
 }
 
 // Close detail modal
@@ -228,6 +287,44 @@ export function showImageLightbox(imageUrl) {
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
         display: block !important;
     `;
+
+    // Add error handling for image load failure
+    img.onerror = () => {
+        // Replace image with error message
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = `
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 20px !important;
+            padding: 40px !important;
+            background: rgba(0, 0, 0, 0.6) !important;
+            border-radius: 12px !important;
+            text-align: center !important;
+        `;
+
+        // Try to get HTTP error code
+        fetch(imageUrl, { method: 'HEAD' })
+            .then(response => {
+                const errorCode = response.ok ? 'Unknown Error' : `Error ${response.status}`;
+                errorDiv.innerHTML = `
+                    <i class="fa-solid fa-image-slash" style="font-size: 4em; color: rgba(255, 100, 100, 0.6);"></i>
+                    <div style="font-size: 1.2em; color: rgba(255, 255, 255, 0.8); font-weight: 500;">Image Failed to Load</div>
+                    <div style="font-size: 0.9em; color: rgba(255, 150, 150, 0.7);">${errorCode}</div>
+                `;
+            })
+            .catch(() => {
+                errorDiv.innerHTML = `
+                    <i class="fa-solid fa-image-slash" style="font-size: 4em; color: rgba(255, 100, 100, 0.6);"></i>
+                    <div style="font-size: 1.2em; color: rgba(255, 255, 255, 0.8); font-weight: 500;">Image Failed to Load</div>
+                    <div style="font-size: 0.9em; color: rgba(255, 150, 150, 0.7);">Network Error</div>
+                `;
+            });
+
+        img.replaceWith(errorDiv);
+        console.log('[Bot Browser] Image failed to load in lightbox:', imageUrl);
+    };
 
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = '<i class="fa-solid fa-times"></i>';

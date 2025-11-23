@@ -892,6 +892,41 @@
     color: rgba(255, 255, 255, 0.3);
 }
 
+/* Fallback styling for failed image loads */
+.bot-browser-card-image.image-load-failed {
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.image-failed-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 20px;
+    text-align: center;
+}
+
+.image-failed-text i {
+    font-size: 2.5em;
+    color: rgba(255, 100, 100, 0.6);
+    position: static;
+    transform: none;
+}
+
+.image-failed-text span {
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.5);
+    font-weight: 500;
+}
+
+.image-failed-text .error-code {
+    font-size: 0.75em;
+    color: rgba(255, 150, 150, 0.7);
+    font-weight: 400;
+    margin-top: -5px;
+}
+
 .bot-browser-card-info {
     padding: 10px;
     flex-shrink: 0;

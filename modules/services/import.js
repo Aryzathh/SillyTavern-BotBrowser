@@ -141,19 +141,24 @@ async function importCharacter(card, extensionName, extension_settings, importSt
             console.log('[Bot Browser] ✓ Successfully fetched Chub image directly');
         }
     } else {
-        // Fetch the image directly for other services
-        const imageResponse = await fetch(imageUrl);
-        if (!imageResponse.ok && imageResponse.status === 404) {
-            console.log('[Bot Browser] Image returned 404, will use fallback method');
+        // Fetch the image directly for other services (including Character Tavern)
+        try {
+            const imageResponse = await fetch(imageUrl);
+            if (!imageResponse.ok) {
+                console.log(`[Bot Browser] Image returned ${imageResponse.status}, will use fallback method`);
+                use404Fallback = true;
+            } else {
+                imageBlob = await imageResponse.blob();
+            }
+        } catch (error) {
+            console.log('[Bot Browser] Failed to fetch image (network error), will use fallback method');
             use404Fallback = true;
-        } else {
-            imageBlob = await imageResponse.blob();
         }
     }
 
-    // If 404, fall back to creating card from chunk data with default avatar
+    // If image fetch failed, fall back to creating card from chunk data with default avatar
     if (use404Fallback) {
-        toastr.info('Image unavailable (404), importing from chunk data with default avatar...', '', { timeOut: 3000 });
+        toastr.info('Image unavailable, importing from chunk data with default avatar...', '', { timeOut: 3000 });
         return await importFromChunkData(card, extensionName, extension_settings, importStats, processDroppedFiles, true);
     }
 
@@ -188,19 +193,28 @@ async function importFromChunkData(card, extensionName, extension_settings, impo
 
     // Load full card data from chunk if available
     let fullCard = card;
-    if (card.chunk && card.service) {
+    const serviceToUse = card.sourceService || card.service;
+
+    if (card.chunk && serviceToUse) {
         try {
-            const chunkData = await loadCardChunk(card.service, card.chunk);
+            const chunkData = await loadCardChunk(serviceToUse, card.chunk);
             if (chunkData && chunkData.length > 0) {
                 // Find the matching card in chunk
                 const chunkCard = chunkData.find(c =>
                     c.id === card.id ||
                     c.name === card.name ||
-                    (c.image_url && c.image_url === card.image_url)
+                    (c.image_url && c.image_url === card.image_url) ||
+                    (c.avatar_url && c.avatar_url === card.avatar_url)
                 );
                 if (chunkCard) {
                     fullCard = { ...chunkCard, ...card };
-                    console.log('[Bot Browser] Loaded full card data from chunk');
+                    console.log('[Bot Browser] ✓ Loaded full card data from chunk');
+                } else {
+                    console.log('[Bot Browser] Could not find exact match in chunk, using card at chunk_idx');
+                    const fallbackCard = chunkData[card.chunk_idx];
+                    if (fallbackCard) {
+                        fullCard = { ...fallbackCard, ...card };
+                    }
                 }
             }
         } catch (error) {
