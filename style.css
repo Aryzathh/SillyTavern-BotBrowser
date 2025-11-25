@@ -1432,6 +1432,38 @@
         padding: 8px 12px;
         gap: 6px;
     }
+
+    /* Mobile fixes for detail modal buttons visibility */
+    .bot-browser-detail-modal {
+        top: 5vh !important;
+        transform: translate(-50%, 0) !important;
+        max-height: 90vh !important;
+        height: auto !important;
+    }
+
+    .bot-browser-detail-content {
+        max-height: calc(90vh - 140px) !important;
+        overflow-y: auto !important;
+    }
+
+    .bot-browser-detail-actions {
+        position: sticky !important;
+        bottom: 0 !important;
+        background: rgb(15, 15, 15) !important;
+        border-top: 2px solid rgba(100, 150, 255, 0.2) !important;
+        margin-top: auto !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .bot-browser-detail-modal {
+        top: 2vh !important;
+        max-height: 96vh !important;
+    }
+
+    .bot-browser-detail-content {
+        max-height: calc(96vh - 140px) !important;
+    }
 }
 
 /* Recently Viewed Section */
