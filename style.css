@@ -679,15 +679,33 @@ body .bot-browser-detail-modal {
     .bot-browser-filters {
         flex-direction: column;
         align-items: stretch;
+        overflow: hidden;
     }
 
     .bot-browser-filter-group {
         width: 100%;
+        overflow: hidden;
+    }
+
+    .bot-browser-filter-group label {
+        flex-shrink: 0;
+        min-width: 50px;
     }
 
     .bot-browser-multi-select {
-        min-width: 100%;
-        width: 100%;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    .bot-browser-multi-select-trigger {
+        overflow: hidden;
+    }
+
+    .bot-browser-multi-select-trigger .selected-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .bot-browser-multi-select-dropdown {
@@ -858,6 +876,7 @@ body .bot-browser-detail-modal {
 .bot-browser-card-grid-wrapper {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
     min-height: 0;

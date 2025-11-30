@@ -538,8 +538,9 @@ function renderCollectionsPage(menuContent) {
         });
     });
 
-    // Scroll to top
-    gridContainer.scrollTop = 0;
+    // Scroll to top - scroll the wrapper which contains search + grid
+    const wrapper = menuContent.querySelector('.bot-browser-card-grid-wrapper');
+    if (wrapper) wrapper.scrollTop = 0;
 }
 
 // Setup collections browser events

@@ -1038,8 +1038,9 @@ function renderPage(state, menuContent, showCardDetailFunc, extensionName, exten
         setupPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
     }
 
-    // Force scroll to top
-    gridContainer.scrollTop = 0;
+    // Force scroll to top - scroll the wrapper which contains search + grid
+    const wrapper = menuContent.querySelector('.bot-browser-card-grid-wrapper');
+    if (wrapper) wrapper.scrollTop = 0;
 
     // Validate images with Intersection Observer (no delay needed)
     validateCardImages();
