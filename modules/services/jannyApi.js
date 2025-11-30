@@ -1,7 +1,110 @@
 const JANNY_SEARCH_URL = 'https://search.jannyai.com/multi-search';
-const JANNY_SEARCH_TOKEN = '88a6463b66e04fb07ba87ee3db06af337f492ce511d93df6e2d2968cb2ff2b30';
+const JANNY_FALLBACK_TOKEN = '88a6463b66e04fb07ba87ee3db06af337f492ce511d93df6e2d2968cb2ff2b30';
 const JANNY_IMAGE_BASE = 'https://image.jannyai.com/bot-avatars/';
 const CORS_PROXY = 'https://corsproxy.io/?url=';
+
+// Cached token state
+let cachedToken = null;
+let tokenFetchPromise = null;
+
+/**
+ * Fetch the MeiliSearch API token from JannyAI's client config
+ * @returns {Promise<string>} The API token
+ */
+async function getSearchToken() {
+    // Return cached token if available
+    if (cachedToken) {
+        return cachedToken;
+    }
+
+    // If already fetching, wait for that promise
+    if (tokenFetchPromise) {
+        return tokenFetchPromise;
+    }
+
+    tokenFetchPromise = (async () => {
+        try {
+            // First fetch the search page to get the config file name
+            const searchPageUrl = `${CORS_PROXY}${encodeURIComponent('https://jannyai.com/characters/search')}`;
+            const pageResponse = await fetch(searchPageUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            });
+
+            if (!pageResponse.ok) {
+                throw new Error(`Failed to fetch search page: ${pageResponse.status}`);
+            }
+
+            const pageHtml = await pageResponse.text();
+
+            // Try to find client-config or SearchPage JS file
+            let configMatch = pageHtml.match(/client-config\.[a-zA-Z0-9_-]+\.js/);
+            let configPath;
+
+            if (configMatch) {
+                const configFilename = configMatch[0];
+                configPath = '/_astro/' + configFilename;
+            } else {
+                // Fallback: find SearchPage.js which imports client-config
+                const searchPageMatch = pageHtml.match(/SearchPage\.[a-zA-Z0-9_-]+\.js/);
+                if (!searchPageMatch) {
+                    // Debug: log what scripts we found
+                    const allScripts = pageHtml.match(/\/_astro\/[^"'\s]+\.js/g) || [];
+                    console.log('[Bot Browser] Available scripts:', allScripts.slice(0, 10));
+                    throw new Error('Could not find client-config or SearchPage JS file');
+                }
+
+                // Fetch SearchPage.js first to find the client-config import
+                const searchPageUrl = `${CORS_PROXY}${encodeURIComponent('https://jannyai.com/_astro/' + searchPageMatch[0])}`;
+                const searchPageResponse = await fetch(searchPageUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                });
+
+                if (searchPageResponse.ok) {
+                    const searchPageJs = await searchPageResponse.text();
+                    // Look for client-config import
+                    const importMatch = searchPageJs.match(/client-config\.[a-zA-Z0-9_-]+\.js/);
+                    if (importMatch) {
+                        configPath = '/_astro/' + importMatch[0];
+                    }
+                }
+
+                if (!configPath) {
+                    throw new Error('Could not find client-config reference');
+                }
+            }
+
+            // Fetch the config JS file
+            const configUrl = `${CORS_PROXY}${encodeURIComponent('https://jannyai.com' + configPath)}`;
+            const configResponse = await fetch(configUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            });
+
+            if (!configResponse.ok) {
+                throw new Error(`Failed to fetch config: ${configResponse.status}`);
+            }
+
+            const configJs = await configResponse.text();
+
+            // Extract the 64-char hex token (it's the MeiliSearch public search key)
+            const tokenMatch = configJs.match(/"([a-f0-9]{64})"/);
+            if (!tokenMatch) {
+                throw new Error('Could not find token in config');
+            }
+
+            cachedToken = tokenMatch[1];
+            console.log('[Bot Browser] Fetched fresh JannyAI search token');
+            return cachedToken;
+        } catch (error) {
+            console.warn('[Bot Browser] Failed to fetch JannyAI token, using fallback:', error.message);
+            cachedToken = JANNY_FALLBACK_TOKEN;
+            return cachedToken;
+        } finally {
+            tokenFetchPromise = null;
+        }
+    })();
+
+    return tokenFetchPromise;
+}
 
 // JannyAI tag ID to name mapping
 export const JANNYAI_TAGS = {
@@ -74,7 +177,7 @@ export async function searchJannyCharacters(options = {}) {
         headers: {
             'Accept': '*/*',
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${JANNY_SEARCH_TOKEN}`,
+            'Authorization': `Bearer ${await getSearchToken()}`,
             'Origin': 'https://jannyai.com',
             'Referer': 'https://jannyai.com/',
             'x-meilisearch-client': 'Meilisearch instant-meilisearch (v0.19.0) ; Meilisearch JavaScript (v0.41.0)'

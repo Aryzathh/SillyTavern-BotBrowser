@@ -1,6 +1,9 @@
 import { escapeHTML, safeString, safeKeywords } from './utils.js';
 
 export function escapeCardTextFields(fullCard, tags, alternateGreetings, exampleMessages) {
+    const safeTags = Array.isArray(tags) ? tags : [];
+    const safeAltGreetings = Array.isArray(alternateGreetings) ? alternateGreetings : [];
+
     return {
         cardName: escapeHTML(fullCard.name),
         cardCreator: escapeHTML(fullCard.creator || ''),
@@ -10,10 +13,10 @@ export function escapeCardTextFields(fullCard, tags, alternateGreetings, example
         personality: escapeHTML(fullCard.personality || ''),
         scenario: escapeHTML(fullCard.scenario || ''),
         firstMessage: escapeHTML(fullCard.first_message || ''),
-        exampleMsg: escapeHTML(exampleMessages),
-        tags: tags.map(tag => escapeHTML(tag)),
+        exampleMsg: escapeHTML(exampleMessages || ''),
+        tags: safeTags.map(tag => escapeHTML(tag)),
         creator: escapeHTML(fullCard.creator || ''),
-        alternateGreetings: alternateGreetings.map(greeting => escapeHTML(greeting)),
+        alternateGreetings: safeAltGreetings.map(greeting => escapeHTML(greeting)),
     };
 }
 
