@@ -1,4 +1,4 @@
-import { escapeHTML } from './utils.js';
+import { escapeHTML, safeString, safeKeywords } from './utils.js';
 
 export function escapeCardTextFields(fullCard, tags, alternateGreetings, exampleMessages) {
     return {
@@ -24,15 +24,15 @@ export function processLorebookEntries(entries) {
 
     if (Array.isArray(entries)) {
         return entries.map((entry, index) => ({
-            name: escapeHTML(entry.name || `Entry ${index}`),
-            keywords: (entry.keywords || []).map(kw => escapeHTML(kw)),
-            content: escapeHTML(entry.content || entry.description || entry)
+            name: escapeHTML(safeString(entry.name) || `Entry ${index}`),
+            keywords: safeKeywords(entry.keys || entry.keywords).map(kw => escapeHTML(kw)),
+            content: escapeHTML(safeString(entry.content || entry.description))
         }));
     }
 
     return Object.entries(entries).map(([key, entry]) => ({
-        name: escapeHTML(entry.name || `Entry ${key}`),
-        keywords: (entry.keywords || []).map(kw => escapeHTML(kw)),
-        content: escapeHTML(entry.content || entry.description || entry)
+        name: escapeHTML(safeString(entry.name || entry.comment) || `Entry ${key}`),
+        keywords: safeKeywords(entry.keys || entry.keywords || entry.key).map(kw => escapeHTML(kw)),
+        content: escapeHTML(safeString(entry.content || entry.description))
     }));
 }
