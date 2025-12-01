@@ -112,7 +112,11 @@ export function getOriginalMenuHTML(recentlyViewed) {
                     <span>Desuarchive</span>
                 </button>
                 <button class="bot-browser-source" data-source="quillgen">
-                    <div class="bot-browser-source-icon" style="background-image: url('https://quillgen.app/logo-dark.png'); background-size: 85%; background-position: center; background-repeat: no-repeat;"></div>
+                    <div class="bot-browser-source-icon" style="background: linear-gradient(135deg, #1a1a2e, #16213e); display: flex; align-items: center; justify-content: center;">
+                        <img src="https://quillgen.app/logo-dark.png"
+                             alt="QuillGen"
+                             style="max-width: 100%; max-height: 100%; display: block;">
+                    </div>
                     <span>QuillGen.app</span>
                 </button>
                 <button class="bot-browser-source" data-source="jannyai">

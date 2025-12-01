@@ -1049,6 +1049,29 @@ function showSettingsModal() {
                                 <small>Static index, works if Chub goes down</small>
                             </div>
                         </div>
+
+                        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+
+                        <div class="bb-setting-group" style="text-align: center;">
+                            <div style="display: inline-block; background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;">
+                                <img src="https://quillgen.app/logo-dark.png" alt="QuillGen" style="height: 32px; display: block;">
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <strong style="color: rgba(255,255,255,0.9);">QuillGen</strong>
+                            </div>
+                            <small style="color: rgba(255,255,255,0.6); display: block; margin-bottom: 15px;">
+                                Browse public characters from QuillGen. Add your API key to also see your own characters.
+                                <a href="https://quillgen.app" target="_blank" style="color: rgba(100, 150, 255, 0.9);">Get your API key →</a>
+                            </small>
+                        </div>
+
+                        <div class="bb-setting-group">
+                            <label for="bb-setting-quillgen-key">QuillGen API Key (optional):</label>
+                            <input type="password" id="bb-setting-quillgen-key" class="text_pole" 
+                                   placeholder="sk_..." 
+                                   value="${settings.quillgenApiKey || ''}"
+                                   style="width: 100%; font-family: monospace;">
+                        </div>
                     </div>
                 </div>
 
@@ -1056,22 +1079,6 @@ function showSettingsModal() {
                     <button id="bb-settings-save" class="bb-settings-save-btn">
                         <i class="fa-solid fa-save"></i> Save Settings
                     </button>
-                </div>
-            </div>
-
-            <div class="bot-browser-settings-section">
-                <h3><i class="fa-solid fa-feather-pointed"></i> QuillGen</h3>
-                <small style="color: rgba(255,255,255,0.6); display: block; margin-bottom: 15px;">
-                    Browse public characters from QuillGen. Add your API key to also see your own characters.
-                    <a href="https://quillgen.app" target="_blank" style="color: rgba(100, 150, 255, 0.9);">Get your API key →</a>
-                </small>
-
-                <div class="bot-browser-setting-group">
-                    <label for="bb-setting-quillgen-key">QuillGen API Key (optional):</label>
-                    <input type="password" id="bb-setting-quillgen-key" class="text_pole" 
-                           placeholder="sk_..." 
-                           value="${settings.quillgenApiKey || ''}"
-                           style="width: 100%; font-family: monospace;">
                 </div>
             </div>
         </div>
