@@ -458,12 +458,29 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
             console.log('[Bot Browser] Triggering Chub API search:', state.filters.search);
             try {
                 // Reset and reload with new search
-                const cards = await loadServiceIndex('chub', true, {
+                let cards = await loadServiceIndex('chub', true, {
                     search: state.filters.search,
                     sort: state.sortBy,
                     hideNsfw: extension_settings[extensionName].hideNsfw,
                     ...(state.advancedFilters || {})
                 });
+
+                // If API returns no results and we have a search query, fallback to archive
+                if (cards.length === 0 && state.filters.search.trim()) {
+                    console.log('[Bot Browser] Chub API returned no results, searching archive...');
+                    const archiveCards = await loadServiceIndex('chub', false);
+                    if (archiveCards.length > 0) {
+                        const archiveFuse = new Fuse(archiveCards, {
+                            keys: ['name', 'description', 'author', 'tags'],
+                            threshold: 0.4,
+                            ignoreLocation: true
+                        });
+                        const archiveResults = archiveFuse.search(state.filters.search);
+                        cards = archiveResults.map(r => ({ ...r.item, fromArchive: true }));
+                        console.log(`[Bot Browser] Found ${cards.length} results in Chub archive`);
+                    }
+                }
+
                 state.currentCards = cards;
 
                 // For live Chub, search is done server-side by the API
@@ -536,7 +553,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
             try {
                 resetCharacterTavernState();
 
-                const cards = await searchCharacterTavern({
+                let cards = await searchCharacterTavern({
                     query: state.filters.search,
                     page: 1,
                     limit: 30,
@@ -546,6 +563,22 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                     maxTokens: state.ctAdvancedFilters?.maxTokens || undefined,
                     tags: state.ctAdvancedFilters?.tags || []
                 });
+
+                // If API returns no results and we have a search query, fallback to archive
+                if (cards.length === 0 && state.filters.search.trim()) {
+                    console.log('[Bot Browser] CT API returned no results, searching archive...');
+                    const archiveCards = await loadServiceIndex('character_tavern', false);
+                    if (archiveCards.length > 0) {
+                        const archiveFuse = new Fuse(archiveCards, {
+                            keys: ['name', 'description', 'author', 'tags'],
+                            threshold: 0.4,
+                            ignoreLocation: true
+                        });
+                        const archiveResults = archiveFuse.search(state.filters.search);
+                        cards = archiveResults.map(r => ({ ...r.item, fromArchive: true }));
+                        console.log(`[Bot Browser] Found ${cards.length} results in CT archive`);
+                    }
+                }
 
                 state.currentCards = cards;
 
