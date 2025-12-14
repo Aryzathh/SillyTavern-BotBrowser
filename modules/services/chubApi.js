@@ -128,7 +128,7 @@ export function transformFullChubCharacter(charData) {
     const relatedLorebooks = (node.related_lorebooks || []).filter(id => id > 0);
 
     return {
-        name: node.name || definition.name || 'Unnamed',
+        name: definition.name || node.name || 'Unnamed',
         description: definition.personality || node.personality || '',
         personality: '', // Chub doesn't have a separate personality field
         scenario: definition.scenario || node.scenario || '',

@@ -162,20 +162,33 @@ async function importCharacter(card, extensionName, extension_settings, importSt
                 const fullCharData = transformFullChubCharacter(fullData);
                 card = { ...card, ...fullCharData };
 
-                // If no embedded lorebook but has related lorebooks, fetch the first one
+                // If no embedded lorebook but has related lorebooks, fetch and merge all of them
                 if (!fullCharData.character_book && fullCharData.related_lorebooks && fullCharData.related_lorebooks.length > 0) {
-                    const firstLorebookId = fullCharData.related_lorebooks[0];
-                    console.log('[Bot Browser] Card has related lorebook, fetching ID:', firstLorebookId);
-                    try {
-                        const lorebookData = await getChubLorebook(firstLorebookId);
-                        if (lorebookData) {
-                            // Convert World Info format to character_book format
-                            const lorebookName = fullData.nodes?.[firstLorebookId]?.name || 'Linked Lorebook';
-                            card.character_book = convertWorldInfoToCharacterBook(lorebookData, lorebookName);
-                            console.log('[Bot Browser] Fetched related lorebook:', lorebookName, 'with', card.character_book.entries?.length || 0, 'entries');
+                    console.log('[Bot Browser] Card has', fullCharData.related_lorebooks.length, 'related lorebooks, fetching all...');
+                    const allEntries = [];
+                    const lorebookNames = [];
+
+                    for (const lorebookId of fullCharData.related_lorebooks) {
+                        try {
+                            const lorebookData = await getChubLorebook(lorebookId);
+                            if (lorebookData) {
+                                const lorebookName = fullData.nodes?.[lorebookId]?.name || `Lorebook ${lorebookId}`;
+                                const converted = convertWorldInfoToCharacterBook(lorebookData, lorebookName);
+                                allEntries.push(...converted.entries);
+                                lorebookNames.push(lorebookName);
+                                console.log('[Bot Browser] Fetched lorebook:', lorebookName, 'with', converted.entries.length, 'entries');
+                            }
+                        } catch (lorebookError) {
+                            console.warn('[Bot Browser] Failed to fetch lorebook', lorebookId, ':', lorebookError.message);
                         }
-                    } catch (lorebookError) {
-                        console.warn('[Bot Browser] Failed to fetch related lorebook:', lorebookError.message);
+                    }
+
+                    if (allEntries.length > 0) {
+                        card.character_book = {
+                            name: lorebookNames.join(' + ') || 'Linked Lorebooks',
+                            entries: allEntries
+                        };
+                        console.log('[Bot Browser] Merged', lorebookNames.length, 'lorebooks with total', allEntries.length, 'entries');
                     }
                 }
 
