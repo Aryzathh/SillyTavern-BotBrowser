@@ -1,7 +1,8 @@
+import { proxiedFetch } from './corsProxy.js';
+
 const JANNY_SEARCH_URL = 'https://search.jannyai.com/multi-search';
 const JANNY_FALLBACK_TOKEN = '88a6463b66e04fb07ba87ee3db06af337f492ce511d93df6e2d2968cb2ff2b30';
 const JANNY_IMAGE_BASE = 'https://image.jannyai.com/bot-avatars/';
-const CORS_PROXY = 'https://corsproxy.io/?url=';
 
 // Cached token state
 let cachedToken = null;
@@ -25,9 +26,11 @@ async function getSearchToken() {
     tokenFetchPromise = (async () => {
         try {
             // First fetch the search page to get the config file name
-            const searchPageUrl = `${CORS_PROXY}${encodeURIComponent('https://jannyai.com/characters/search')}`;
-            const pageResponse = await fetch(searchPageUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            const pageResponse = await proxiedFetch('https://jannyai.com/characters/search', {
+                service: 'jannyai',
+                fetchOptions: {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                }
             });
 
             if (!pageResponse.ok) {
@@ -54,13 +57,15 @@ async function getSearchToken() {
                 }
 
                 // Fetch SearchPage.js first to find the client-config import
-                const searchPageUrl = `${CORS_PROXY}${encodeURIComponent('https://jannyai.com/_astro/' + searchPageMatch[0])}`;
-                const searchPageResponse = await fetch(searchPageUrl, {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                const searchPageJsResponse = await proxiedFetch('https://jannyai.com/_astro/' + searchPageMatch[0], {
+                    service: 'jannyai',
+                    fetchOptions: {
+                        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                    }
                 });
 
-                if (searchPageResponse.ok) {
-                    const searchPageJs = await searchPageResponse.text();
+                if (searchPageJsResponse.ok) {
+                    const searchPageJs = await searchPageJsResponse.text();
                     // Look for client-config import
                     const importMatch = searchPageJs.match(/client-config\.[a-zA-Z0-9_-]+\.js/);
                     if (importMatch) {
@@ -74,9 +79,11 @@ async function getSearchToken() {
             }
 
             // Fetch the config JS file
-            const configUrl = `${CORS_PROXY}${encodeURIComponent('https://jannyai.com' + configPath)}`;
-            const configResponse = await fetch(configUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            const configResponse = await proxiedFetch('https://jannyai.com' + configPath, {
+                service: 'jannyai',
+                fetchOptions: {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                }
             });
 
             if (!configResponse.ok) {
@@ -203,14 +210,16 @@ export async function searchJannyCharacters(options = {}) {
  */
 export async function fetchJannyCharacterDetails(characterId, slug) {
     const characterUrl = `https://jannyai.com/characters/${characterId}_${slug}`;
-    const proxyUrl = `${CORS_PROXY}${encodeURIComponent(characterUrl)}`;
 
-    console.log('[Bot Browser] Fetching JannyAI character:', proxyUrl);
+    console.log('[Bot Browser] Fetching JannyAI character:', characterUrl);
 
-    const response = await fetch(proxyUrl, {
-        headers: {
-            'Accept': 'text/html',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    const response = await proxiedFetch(characterUrl, {
+        service: 'jannyai',
+        fetchOptions: {
+            headers: {
+                'Accept': 'text/html',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
         }
     });
 

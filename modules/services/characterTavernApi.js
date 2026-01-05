@@ -3,7 +3,8 @@
  * Live API for searching and importing characters from character-tavern.com
  */
 
-const CORS_PROXY = 'https://corsproxy.io/?url=';
+import { proxiedFetch } from './corsProxy.js';
+
 const CT_API_BASE = 'https://character-tavern.com/api/search/cards';
 
 // API state for pagination
@@ -51,12 +52,14 @@ export async function searchCharacterTavern(options = {}) {
         if (tags.length > 0) params.set('tags', tags.join(','));
 
         const url = `${CT_API_BASE}?${params}`;
-        const proxyUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
         console.log('[Bot Browser] Character Tavern API request:', url);
 
-        const response = await fetch(proxyUrl, {
-            headers: {
-                'Accept': 'application/json'
+        const response = await proxiedFetch(url, {
+            service: 'character_tavern',
+            fetchOptions: {
+                headers: {
+                    'Accept': 'application/json'
+                }
             }
         });
 

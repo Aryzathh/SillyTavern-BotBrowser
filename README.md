@@ -54,6 +54,8 @@ Browse cards, click one to see details, hit import to SillyTavern if you want it
 - [MLPchag](https://mlpchag.neocities.org)
 - [JanitorAI](https://janitorai.com) / [JannyAI](https://jannyai.com)
 - [Wyvern Chat](https://wyvern.chat)
+- [Backyard.ai](https://backyard.ai)
+- [Pygmalion.chat](https://pygmalion.chat)
 - [QuillGen](https://quillgen.app) (via direct API)
 
 Data updates periodically from the repo. Sources could be unreliable/may stop working. Tested briefly on Moonlit Echoes theme, and on mobile. If you find any issues, please report them.

@@ -35,25 +35,27 @@ export function escapeHTML(text) {
         .replace(/'/g, '&#039;');
 }
 
-const CORS_PROXIES = [
-    'https://corsproxy.io/?',
-    'https://api.cors.lol/?url='
-];
-
-export function getRandomCorsProxy() {
-    return CORS_PROXIES[Math.floor(Math.random() * CORS_PROXIES.length)];
-}
-
 export function sanitizeImageUrl(url) {
     if (!url) return '';
     let trimmed = url.trim();
 
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-        if (trimmed.includes('corsproxy.io')) {
+        // Strip any existing CORS proxy wrappers to get the original URL
+        // Then let the image loader handle CORS issues with its proxy chain
+        if (trimmed.includes('corsproxy.io/?url=')) {
+            const match = trimmed.match(/corsproxy\.io\/\?url=(.+)/);
+            if (match) {
+                trimmed = decodeURIComponent(match[1]);
+            }
+        } else if (trimmed.includes('corsproxy.io/?')) {
             const afterProxy = trimmed.split('corsproxy.io/?')[1];
             if (afterProxy) {
-                const actualUrl = afterProxy.replace(/^url=/, '');
-                trimmed = getRandomCorsProxy() + actualUrl;
+                trimmed = afterProxy.replace(/^url=/, '');
+            }
+        } else if (trimmed.includes('cors.workers.dev/?')) {
+            const afterProxy = trimmed.split('cors.workers.dev/?')[1];
+            if (afterProxy) {
+                trimmed = afterProxy;
             }
         }
         return escapeHTML(trimmed);

@@ -1,11 +1,11 @@
 // Trending APIs for Bot Browser
 // Fetches trending/popular characters from various sources
 
-const CORS_PROXY = 'https://corsproxy.io/?url=';
+import { proxiedFetch, CORS_PROXY } from './corsProxy.js';
 
 // ==================== CHARACTER TAVERN TRENDING ====================
 
-const CT_TRENDING_URL = 'https://search-api.character-tavern.com/homepage/trending';
+const CT_TRENDING_URL = 'https://character-tavern.com/api/homepage/cards?type=trending';
 
 /**
  * Fetch trending characters from Character Tavern
@@ -20,11 +20,12 @@ export async function fetchCharacterTavernTrending(options = {}) {
 
     console.log('[Bot Browser] Fetching Character Tavern trending:', url);
 
-    const response = await fetch(url, {
-        headers: {
-            'Accept': '*/*',
-            'Origin': 'https://character-tavern.com',
-            'Referer': 'https://character-tavern.com/'
+    const response = await proxiedFetch(url, {
+        service: 'character_tavern_trending',
+        fetchOptions: {
+            headers: {
+                'Accept': 'application/json'
+            }
         }
     });
 
@@ -257,12 +258,14 @@ export async function fetchWyvernTrending(options = {}) {
         });
 
         const url = `${WYVERN_API_BASE}/characters?${params}`;
-        const proxyUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
         console.log('[Bot Browser] Fetching Wyvern trending:', url);
 
-        const response = await fetch(proxyUrl, {
-            headers: {
-                'Accept': 'application/json'
+        const response = await proxiedFetch(url, {
+            service: 'wyvern_trending',
+            fetchOptions: {
+                headers: {
+                    'Accept': 'application/json'
+                }
             }
         });
 
@@ -339,6 +342,20 @@ export function transformWyvernTrendingCard(node) {
 
 const JANITORAI_TRENDING_URL = 'https://janitorai.com/hampter/characters';
 
+// Browser-like headers to bypass Cloudflare - sec-* headers are critical
+const JANITORAI_HEADERS = {
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Origin': 'https://janitorai.com',
+    'Referer': 'https://janitorai.com/',
+    'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin'
+};
+
 // JannyAI trending state
 export let jannyTrendingState = {
     page: 1,
@@ -356,6 +373,7 @@ export function resetJannyTrendingState() {
 
 /**
  * Fetch trending characters from JannyAI via JanitorAI API
+ * Uses Puter.js with browser-like headers to bypass Cloudflare
  * @param {Object} options - Fetch options
  * @returns {Promise<Object>} Trending results
  */
@@ -375,12 +393,12 @@ export async function fetchJannyTrending(options = {}) {
         });
 
         const url = `${JANITORAI_TRENDING_URL}?${params}`;
-        const proxyUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
         console.log('[Bot Browser] Fetching JannyAI trending:', url);
 
-        const response = await fetch(proxyUrl, {
-            headers: {
-                'Accept': 'application/json'
+        const response = await proxiedFetch(url, {
+            service: 'jannyai_trending',
+            fetchOptions: {
+                headers: JANITORAI_HEADERS
             }
         });
 
@@ -391,7 +409,6 @@ export async function fetchJannyTrending(options = {}) {
         const data = await response.json();
 
         const characters = data.data || [];
-        // Always assume more pages for trending unless we get 0 results
         const hasMore = characters.length > 0;
 
         jannyTrendingState.page = page;
@@ -399,7 +416,7 @@ export async function fetchJannyTrending(options = {}) {
         jannyTrendingState.totalHits = data.total || characters.length;
         jannyTrendingState.isLoading = false;
 
-        console.log(`[Bot Browser] JanitorAI/JannyAI trending returned ${characters.length} characters (page ${page})`);
+        console.log(`[Bot Browser] JanitorAI trending returned ${characters.length} characters (page ${page})`);
 
         return {
             characters,
@@ -429,7 +446,6 @@ export async function loadMoreJannyTrending(options = {}) {
 
 /**
  * Transform JanitorAI trending result to BotBrowser card format
- * Gets character ID from JanitorAI, uses JannyAI for loading
  * @param {Object} char - JanitorAI API character
  * @returns {Object} Card in BotBrowser format
  */
@@ -463,7 +479,6 @@ export function transformJannyTrendingCard(char) {
         creator: char.creator_name || '',
         creator_id: char.creator_id || '',
         avatar_url: avatarUrl,
-        // Use JannyAI URL format for loading character data
         image_url: `https://jannyai.com/characters/${char.id}_character-${slug}`,
         tags: tags,
         description: char.description || '',
@@ -471,11 +486,9 @@ export function transformJannyTrendingCard(char) {
         created_at: char.created_at,
         updated_at: char.updated_at,
         possibleNsfw: char.is_nsfw || char.is_image_nsfw || false,
-        // Stats
         chatCount: char.stats?.chat || 0,
         messageCount: char.stats?.message || 0,
         totalTokens: char.total_tokens || 0,
-        // Service identification
         service: 'jannyai',
         sourceService: 'jannyai_trending',
         isJannyAI: true,
@@ -486,8 +499,6 @@ export function transformJannyTrendingCard(char) {
 
 /**
  * Strip HTML tags from string
- * @param {string} html - HTML string
- * @returns {string} Plain text
  */
 function stripHtmlTags(html) {
     if (!html) return '';
@@ -499,7 +510,89 @@ function stripHtmlTags(html) {
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
-        .replace(/\u003c/g, '<')
-        .replace(/\u003e/g, '>')
         .trim();
+}
+
+// ==================== BACKYARD.AI TRENDING ====================
+
+import {
+    browseBackyardCharacters,
+    transformBackyardCard,
+    BACKYARD_SORT_TYPES,
+    backyardApiState,
+    resetBackyardApiState
+} from './backyardApi.js';
+
+// Re-export for convenience
+export { resetBackyardApiState, backyardApiState };
+
+// Backyard trending state
+export let backyardTrendingState = {
+    cursor: null,
+    hasMore: true,
+    isLoading: false
+};
+
+export function resetBackyardTrendingState() {
+    backyardTrendingState.cursor = null;
+    backyardTrendingState.hasMore = true;
+    backyardTrendingState.isLoading = false;
+}
+
+/**
+ * Fetch trending characters from Backyard.ai
+ * @param {Object} options - Fetch options
+ * @returns {Promise<Object>} Trending results
+ */
+export async function fetchBackyardTrending(options = {}) {
+    const { sortBy = BACKYARD_SORT_TYPES.TRENDING, type = 'all' } = options;
+
+    backyardTrendingState.isLoading = true;
+
+    try {
+        const result = await browseBackyardCharacters({
+            sortBy,
+            type,
+            cursor: backyardTrendingState.cursor
+        });
+
+        backyardTrendingState.cursor = result.nextCursor;
+        backyardTrendingState.hasMore = result.hasMore;
+        backyardTrendingState.isLoading = false;
+
+        console.log(`[Bot Browser] Backyard.ai trending returned ${result.characters.length} characters`);
+
+        return {
+            characters: result.characters,
+            hasMore: result.hasMore
+        };
+    } catch (error) {
+        backyardTrendingState.isLoading = false;
+        throw error;
+    }
+}
+
+/**
+ * Load more Backyard.ai trending characters
+ */
+export async function loadMoreBackyardTrending(options = {}) {
+    if (!backyardTrendingState.hasMore || backyardTrendingState.isLoading) {
+        return { characters: [], hasMore: false };
+    }
+
+    return fetchBackyardTrending(options);
+}
+
+/**
+ * Transform Backyard.ai character to trending card format
+ * @param {Object} char - Backyard.ai character
+ * @returns {Object} BotBrowser card format
+ */
+export function transformBackyardTrendingCard(char) {
+    const card = transformBackyardCard(char);
+    return {
+        ...card,
+        sourceService: 'backyard_trending',
+        isTrending: true
+    };
 }

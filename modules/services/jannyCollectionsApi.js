@@ -1,5 +1,6 @@
 // JannyAI Collections API - fetches and parses collections via CORS proxy
-const CORS_PROXY = 'https://corsproxy.io/?url=';
+import { proxiedFetch } from './corsProxy.js';
+
 const JANNY_COLLECTIONS_URL = 'https://jannyai.com/collections';
 const JANNY_IMAGE_BASE = 'https://image.jannyai.com/bot-avatars/';
 
@@ -15,14 +16,16 @@ export async function fetchJannyCollections(options = {}) {
     } = options;
 
     const url = `${JANNY_COLLECTIONS_URL}?sort=${sort}&page=${page}`;
-    const proxyUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
 
     console.log('[Bot Browser] Fetching JannyAI collections:', url);
 
-    const response = await fetch(proxyUrl, {
-        headers: {
-            'Accept': 'text/html',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    const response = await proxiedFetch(url, {
+        service: 'jannyai',
+        fetchOptions: {
+            headers: {
+                'Accept': 'text/html',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
         }
     });
 
@@ -191,14 +194,16 @@ function findCollectionSection(html, fullPath) {
  */
 export async function fetchJannyCollectionDetails(collectionId, slug) {
     const url = `https://jannyai.com/collections/${collectionId}_${slug}`;
-    const proxyUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
 
     console.log('[Bot Browser] Fetching JannyAI collection details:', url);
 
-    const response = await fetch(proxyUrl, {
-        headers: {
-            'Accept': 'text/html',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    const response = await proxiedFetch(url, {
+        service: 'jannyai',
+        fetchOptions: {
+            headers: {
+                'Accept': 'text/html',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
         }
     });
 

@@ -1,3 +1,5 @@
+import { buildProxyUrl, PROXY_TYPES } from './corsProxy.js';
+
 export function getAllTags(cards) {
     const tagsSet = new Set();
     cards.forEach(card => {
@@ -178,6 +180,72 @@ export function deduplicateCards(cards) {
 // Global Intersection Observer for lazy image validation
 let imageObserver = null;
 
+// Proxy chain for image fallback - uses corsProxy.js utilities
+const IMAGE_PROXY_CHAIN = [
+    PROXY_TYPES.CORSPROXY_IO,
+    PROXY_TYPES.CORS_LOL
+];
+
+async function checkImageExists(url) {
+    try {
+        // Use a proxy to check since direct fetch may fail due to CORS
+        const proxyUrl = buildProxyUrl(PROXY_TYPES.CORSPROXY_IO, url);
+        const response = await fetch(proxyUrl, { method: 'HEAD' });
+        return { exists: response.ok, status: response.status };
+    } catch {
+        // Can't determine, assume it might exist
+        return { exists: true, status: 0 };
+    }
+}
+
+function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExists = false) {
+    // First check if image exists (404/410 = removed)
+    if (!checkedExists) {
+        checkImageExists(originalUrl).then(({ exists, status }) => {
+            if (!exists && (status === 404 || status === 410 || status === 403)) {
+                const message = status === 403 ? 'Image Restricted' : 'Image Removed';
+                showImageError(imageDiv, message, originalUrl);
+                console.log(`[Bot Browser] Image ${status} (removed/restricted):`, originalUrl);
+                return;
+            }
+            // Image exists or we can't tell, try proxies
+            tryLoadImageWithProxy(imageDiv, originalUrl, 0, true);
+        });
+        return;
+    }
+
+    if (proxyIndex >= IMAGE_PROXY_CHAIN.length) {
+        // All proxies failed
+        showImageError(imageDiv, 'CORS/Network Error', originalUrl);
+        return;
+    }
+
+    const proxyType = IMAGE_PROXY_CHAIN[proxyIndex];
+    const proxyUrl = buildProxyUrl(proxyType, originalUrl);
+
+    if (!proxyUrl) {
+        // This proxy type not available, try next
+        tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
+        return;
+    }
+
+    const testImg = new Image();
+
+    testImg.onload = () => {
+        // Proxy worked! Update the image
+        imageDiv.style.backgroundImage = `url('${proxyUrl}')`;
+        console.log(`[Bot Browser] Image loaded via ${proxyType}:`, originalUrl);
+    };
+
+    testImg.onerror = () => {
+        // This proxy failed, try next
+        console.log(`[Bot Browser] ${proxyType} failed for:`, originalUrl);
+        tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
+    };
+
+    testImg.src = proxyUrl;
+}
+
 function getImageObserver() {
     if (!imageObserver) {
         imageObserver = new IntersectionObserver((entries) => {
@@ -194,19 +262,18 @@ function getImageObserver() {
                         if (urlMatch && urlMatch[1]) {
                             const imageUrl = urlMatch[1];
 
+                            // Skip if already proxied
+                            if (imageUrl.includes('corsproxy.io') || imageUrl.includes('cors.workers.dev') || imageUrl.startsWith('/proxy/')) {
+                                return;
+                            }
+
                             // Use an actual Image object to test loading
                             const testImg = new Image();
 
                             testImg.onerror = () => {
-                                // Image failed to load - show fallback
-                                fetch(imageUrl, { method: 'HEAD' })
-                                    .then(response => {
-                                        const errorCode = response.ok ? 'Unknown Error' : `Error ${response.status}`;
-                                        showImageError(imageDiv, errorCode, imageUrl);
-                                    })
-                                    .catch(() => {
-                                        showImageError(imageDiv, 'Network Error', imageUrl);
-                                    });
+                                // Image failed to load - try with CORS proxy
+                                console.log('[Bot Browser] Image failed, trying proxies:', imageUrl);
+                                tryLoadImageWithProxy(imageDiv, imageUrl, 0);
                             };
 
                             testImg.src = imageUrl;
@@ -243,12 +310,23 @@ function showImageError(imageDiv, errorCode, imageUrl, silent = false) {
     imageDiv.style.backgroundImage = 'none';
     imageDiv.classList.add('image-load-failed');
 
+    // Determine icon and message based on error type
+    let icon = 'fa-image-slash';
+    let message = 'Image Failed to Load';
+
+    if (errorCode === 'Image Removed' || errorCode === '404') {
+        icon = 'fa-trash-can';
+        message = 'Image Removed';
+    } else if (errorCode === 'Image Restricted' || errorCode === '403') {
+        icon = 'fa-ban';
+        message = 'Image Restricted';
+    }
+
     if (!imageDiv.querySelector('.image-failed-text')) {
         imageDiv.innerHTML = `
             <div class="image-failed-text">
-                <i class="fa-solid fa-image-slash"></i>
-                <span>Image Failed to Load</span>
-                <span class="error-code">${errorCode}</span>
+                <i class="fa-solid ${icon}"></i>
+                <span>${message}</span>
             </div>
         `;
     }

@@ -10,8 +10,16 @@ import { searchCharacterTavern } from './services/characterTavernApi.js';
 import {
     fetchChubTrending, transformChubTrendingCard, chubTrendingState, resetChubTrendingState,
     fetchWyvernTrending, transformWyvernTrendingCard, wyvernTrendingState, resetWyvernTrendingState,
-    fetchJannyTrending, transformJannyTrendingCard, jannyTrendingState, resetJannyTrendingState, loadMoreJannyTrending
+    fetchJannyTrending, transformJannyTrendingCard, jannyTrendingState, resetJannyTrendingState, loadMoreJannyTrending,
+    backyardTrendingState, loadMoreBackyardTrending
 } from './services/trendingApi.js';
+import {
+    fetchRisuRealmTrending, transformRisuRealmCard, risuRealmApiState, resetRisuRealmState,
+    searchRisuRealm, loadMoreRisuRealm
+} from './services/risuRealmApi.js';
+import { searchChubCards, transformChubCard } from './services/chubApi.js';
+import { searchBackyardCharacters, transformBackyardCard, backyardApiState, resetBackyardApiState, loadMoreBackyardCharacters, BACKYARD_SORT_TYPES } from './services/backyardApi.js';
+import { pygmalionApiState, resetPygmalionApiState, loadMorePygmalionCharacters } from './services/pygmalionApi.js';
 
 // JannyAI API state for pagination
 let jannyApiState = {
@@ -74,10 +82,25 @@ export function createCardBrowser(serviceName, cards, state, extensionName, exte
     state.isLiveChub = isChubService && useLiveChubApi && cards.some(c => c.isLiveChub);
     state.isLorebooks = serviceName === 'chub_lorebooks';
 
-    // Detect if this is JannyAI (always live API)
-    state.isJannyAI = serviceName === 'jannyai';
-    if (state.isJannyAI) {
+    // Detect if this is JannyAI (always live API) - includes trending
+    state.isJannyAI = serviceName === 'jannyai' || cards.some(c => c.isJannyAI || c.sourceService === 'jannyai_trending');
+    if (serviceName === 'jannyai') {
         resetJannyApiState();
+    }
+
+    // Detect if this is RisuRealm (live API) - includes trending
+    state.isRisuRealm = serviceName === 'risuai_realm' || cards.some(c => c.isRisuRealm || c.service === 'risuai_realm' || c.sourceService === 'risuai_realm_trending');
+
+    // Detect if this is Backyard.ai (always live API)
+    state.isBackyard = serviceName === 'backyard' || cards.some(c => c.isBackyard || c.service === 'backyard');
+    if (state.isBackyard && serviceName === 'backyard') {
+        resetBackyardApiState();
+    }
+
+    // Detect if this is Pygmalion.chat (always live API)
+    state.isPygmalion = serviceName === 'pygmalion' || cards.some(c => c.isPygmalion || c.service === 'pygmalion');
+    if (state.isPygmalion && serviceName === 'pygmalion') {
+        resetPygmalionApiState();
     }
 
     // Detect if this is Character Tavern with live API enabled
@@ -100,12 +123,18 @@ export function createCardBrowser(serviceName, cards, state, extensionName, exte
         }
     }
 
+    // Detect "All Sources" mode
+    state.isAllSources = serviceName === 'all';
+
     // Detect trending sources via card sourceService
     const firstCard = cards[0];
     state.isTrending = firstCard?.isTrending || false;
     state.isJannyAITrending = firstCard?.sourceService === 'jannyai_trending';
     state.isChubTrending = firstCard?.sourceService === 'chub_trending';
     state.isWyvernTrending = firstCard?.sourceService === 'wyvern_trending';
+    state.isRisuRealmTrending = firstCard?.sourceService === 'risuai_realm_trending';
+    state.isBackyardTrending = firstCard?.sourceService === 'backyard_trending';
+    state.isPygmalionTrending = firstCard?.sourceService === 'pygmalion_trending';
 
     // Deduplicate cards before storing, and preserve or add the source service name
     const cardsWithSource = cards.map(card => ({
@@ -248,12 +277,14 @@ export function createCardBrowser(serviceName, cards, state, extensionName, exte
         ? `Browsing Chub API${nsfwText}`
         : state.isJannyAI
             ? `Browsing JannyAI${nsfwText}`
-            : state.isCharacterTavern
-                ? `Browsing Character Tavern${nsfwText}`
-                : state.isWyvern
-                    ? `Browsing Wyvern Chat${nsfwText}`
-                    : `${cardsWithImages.length} card${cardsWithImages.length !== 1 ? 's' : ''} found${nsfwText}`;
-    menuContent.innerHTML = createBrowserHeader(serviceDisplayName, state.filters.search, cardCountText, searchCollapsed, hideNsfw, state.isLiveChub, state.advancedFilters, state.isJannyAI, state.jannyAdvancedFilters, state.isCharacterTavern, state.ctAdvancedFilters, state.isWyvern, state.wyvernAdvancedFilters);
+            : state.isRisuRealm
+                ? `Browsing RisuRealm${nsfwText}`
+                : state.isCharacterTavern
+                    ? `Browsing Character Tavern${nsfwText}`
+                    : state.isWyvern
+                        ? `Browsing Wyvern Chat${nsfwText}`
+                        : `${cardsWithImages.length} card${cardsWithImages.length !== 1 ? 's' : ''} found${nsfwText}`;
+    menuContent.innerHTML = createBrowserHeader(serviceDisplayName, state.filters.search, cardCountText, searchCollapsed, hideNsfw, state.isLiveChub, state.advancedFilters, state.isJannyAI, state.jannyAdvancedFilters, state.isCharacterTavern, state.ctAdvancedFilters, state.isWyvern, state.wyvernAdvancedFilters, state.isRisuRealm);
 
     // Render first page immediately for better perceived performance
     renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
@@ -293,6 +324,17 @@ export function createCardBrowser(serviceName, cards, state, extensionName, exte
         setupWyvernAdvancedFilterListeners(menuContent, state, extensionName, extension_settings, showCardDetailFunc);
     }
 
+    // Setup dismiss handler for API warning banner
+    const dismissWarning = menuContent.querySelector('.bot-browser-dismiss-warning');
+    if (dismissWarning) {
+        dismissWarning.addEventListener('click', () => {
+            const warning = dismissWarning.closest('.bot-browser-api-warning');
+            if (warning) {
+                warning.style.display = 'none';
+            }
+        });
+    }
+
     console.log('[Bot Browser] Card browser created with', sortedCards.length, 'cards');
 }
 
@@ -301,8 +343,18 @@ function updateFilterDropdowns(menuContent, allTags, allCreators, state) {
     // Populate tags (Custom Multi-Select)
     const tagFilterContainer = menuContent.querySelector('#bot-browser-tag-filter');
 
+    if (!tagFilterContainer) {
+        console.warn('[Bot Browser] Tag filter container not found');
+        return;
+    }
+
     const tagOptionsContainer = tagFilterContainer.querySelector('.bot-browser-multi-select-options');
     const tagTriggerText = tagFilterContainer.querySelector('.selected-text');
+
+    if (!tagOptionsContainer || !tagTriggerText) {
+        console.warn('[Bot Browser] Tag filter elements not found');
+        return;
+    }
 
     // Clear existing options
     tagOptionsContainer.innerHTML = '';
@@ -337,6 +389,13 @@ function updateFilterDropdowns(menuContent, allTags, allCreators, state) {
 
     // Populate creators (Custom Multi-Select)
     const creatorFilterContainer = menuContent.querySelector('#bot-browser-creator-filter');
+    const creatorFilterGroup = creatorFilterContainer.closest('.bot-browser-filter-group');
+
+    // Hide entire creator filter group when on a creator page (viewing "Cards by X")
+    if (creatorFilterGroup) {
+        creatorFilterGroup.style.display = state.isCreatorPage ? 'none' : '';
+    }
+
     const creatorOptionsContainer = creatorFilterContainer.querySelector('.bot-browser-multi-select-options');
     const creatorTriggerText = creatorFilterContainer.querySelector('.selected-text');
 
@@ -647,6 +706,83 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
                 console.error('[Bot Browser] Wyvern search failed:', error);
+            }
+        } else if (state.isAllSources && state.filters.search.trim()) {
+            // For All Sources with a search query, query live APIs in parallel with local search
+            console.log('[Bot Browser] All Sources search:', state.filters.search);
+            try {
+                const useLiveChubApi = extension_settings[extensionName].useChubLiveApi !== false;
+                const useRisuRealmLiveApi = extension_settings[extensionName].useRisuRealmLiveApi !== false;
+                const hideNsfw = extension_settings[extensionName].hideNsfw;
+
+                // Start with local Fuse.js search of current cards
+                if (!state.fuse) {
+                    state.fuse = new Fuse(state.currentCards, state.fuseOptions);
+                }
+                const localResults = state.fuse.search(state.filters.search).map(r => r.item);
+
+                // Query live APIs in parallel
+                const apiPromises = [];
+
+                if (useLiveChubApi) {
+                    apiPromises.push(
+                        searchChubCards({
+                            search: state.filters.search,
+                            limit: 50,
+                            sort: 'download_count',
+                            nsfw: !hideNsfw
+                        }).then(result => {
+                            const nodes = result?.data?.nodes || result?.nodes || [];
+                            return nodes.map(node => ({
+                                ...transformChubCard(node),
+                                sourceService: 'chub',
+                                isLiveChub: true,
+                                isLiveApi: true
+                            }));
+                        }).catch(() => [])
+                    );
+                }
+
+                if (useRisuRealmLiveApi) {
+                    apiPromises.push(
+                        searchRisuRealm({
+                            search: state.filters.search,
+                            page: 1,
+                            sort: 'recommended',
+                            nsfw: !hideNsfw
+                        }).then(result =>
+                            result.cards.map(card => ({
+                                ...transformRisuRealmCard(card),
+                                sourceService: 'risuai_realm',
+                                isLiveApi: true,
+                                isRisuRealm: true
+                            }))
+                        ).catch(() => [])
+                    );
+                }
+
+                // Wait for all API results
+                const apiResults = await Promise.all(apiPromises);
+                const allApiCards = apiResults.flat();
+
+                // Merge local and API results, deduplicate
+                const mergedCards = deduplicateCards([...allApiCards, ...localResults]);
+                console.log(`[Bot Browser] All Sources search: ${localResults.length} local + ${allApiCards.length} API = ${mergedCards.length} unique`);
+
+                state.currentCards = mergedCards;
+                state.fuse = new Fuse(mergedCards, state.fuseOptions);
+
+                // Apply client-side filters and sort
+                const filteredCards = applyClientSideFilters(mergedCards, state, extensionName, extension_settings);
+                state.filteredCards = sortCards(filteredCards, state.sortBy);
+                state.currentPage = 1;
+
+                updateCachedFiltersAndDropdowns(state, menuContent);
+                renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+            } catch (error) {
+                console.error('[Bot Browser] All Sources search failed:', error);
+                // Fall back to local search
+                refreshCardGrid(state, extensionName, extension_settings, showCardDetailFunc);
             }
         } else {
             // Lazy initialize Fuse.js when user starts searching
@@ -1532,6 +1668,12 @@ function renderPage(state, menuContent, showCardDetailFunc, extensionName, exten
         paginationHTML = createChubPaginationHTML(chubTrendingState.page, chubTrendingState.hasMore, false);
     } else if (state.isWyvernTrending) {
         paginationHTML = createChubPaginationHTML(wyvernTrendingState.page, wyvernTrendingState.hasMore, false);
+    } else if (state.isRisuRealmTrending) {
+        paginationHTML = createChubPaginationHTML(risuRealmApiState.page, risuRealmApiState.hasMore, false);
+    } else if (state.isBackyardTrending) {
+        paginationHTML = createChubPaginationHTML(1, backyardTrendingState.hasMore, false);
+    } else if (state.isPygmalionTrending) {
+        paginationHTML = createChubPaginationHTML(pygmalionApiState.page, pygmalionApiState.hasMore, false);
     } else if (state.isLiveChub) {
         paginationHTML = createChubPaginationHTML(state.currentPage, chubApiState.hasMore, state.currentPage * cardsPerPage < state.filteredCards.length);
     } else if (state.isJannyAI) {
@@ -1540,6 +1682,12 @@ function renderPage(state, menuContent, showCardDetailFunc, extensionName, exten
         paginationHTML = createChubPaginationHTML(ctApiState.page, ctApiState.hasMore, false);
     } else if (state.isWyvern) {
         paginationHTML = createChubPaginationHTML(wyvernApiState.page, wyvernApiState.hasMore, false);
+    } else if (state.isBackyard) {
+        paginationHTML = createChubPaginationHTML(1, backyardApiState.hasMore, false);
+    } else if (state.isPygmalion) {
+        paginationHTML = createChubPaginationHTML(pygmalionApiState.page, pygmalionApiState.hasMore, false);
+    } else if (state.isRisuRealm) {
+        paginationHTML = createChubPaginationHTML(risuRealmApiState.page, risuRealmApiState.hasMore, false);
     } else {
         paginationHTML = createPaginationHTML(state.currentPage, state.totalPages);
     }
@@ -1567,6 +1715,12 @@ function renderPage(state, menuContent, showCardDetailFunc, extensionName, exten
         setupChubTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
     } else if (state.isWyvernTrending) {
         setupWyvernTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+    } else if (state.isRisuRealmTrending) {
+        setupRisuRealmTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+    } else if (state.isBackyardTrending) {
+        setupBackyardTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+    } else if (state.isPygmalionTrending) {
+        setupPygmalionPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
     } else if (state.isLiveChub) {
         setupChubPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
     } else if (state.isJannyAI) {
@@ -1575,11 +1729,17 @@ function renderPage(state, menuContent, showCardDetailFunc, extensionName, exten
         setupCTPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
     } else if (state.isWyvern) {
         setupWyvernPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+    } else if (state.isBackyard) {
+        setupBackyardPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+    } else if (state.isPygmalion) {
+        setupPygmalionPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+    } else if (state.isRisuRealm) {
+        setupRisuRealmPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
     } else {
         setupPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
     }
 
-    // Force scroll to top - scroll the wrapper which contains search + grid
+    // Scroll to top after rendering
     const wrapper = menuContent.querySelector('.bot-browser-card-grid-wrapper');
     if (wrapper) wrapper.scrollTop = 0;
 
@@ -2043,6 +2203,243 @@ function setupWyvernTrendingPaginationListeners(gridContainer, state, menuConten
                 await fetchApiPage(wyvernTrendingState.page - 1);
             } else if (action === 'next' && wyvernTrendingState.hasMore) {
                 await fetchApiPage(wyvernTrendingState.page + 1);
+            }
+        });
+    });
+}
+
+function setupRisuRealmTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+    const pagination = gridContainer.querySelector('.bot-browser-pagination');
+    if (!pagination) return;
+
+    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+
+            const fetchApiPage = async (pageNum) => {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+
+                try {
+                    console.log(`[Bot Browser] Fetching RisuRealm trending page ${pageNum}`);
+                    const result = await fetchRisuRealmTrending({
+                        page: pageNum,
+                        nsfw: !extension_settings[extensionName].hideNsfw
+                    });
+                    const cards = result.cards.map(card => ({
+                        ...transformRisuRealmCard(card),
+                        sourceService: 'risuai_realm_trending',
+                        isTrending: true
+                    }));
+
+                    // Replace current cards with new page
+                    state.currentCards = cards;
+                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
+                    state.currentPage = 1;
+                    state.totalPages = 1;
+
+                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+                    console.log(`[Bot Browser] Displaying RisuRealm trending page ${pageNum} (${cards.length} cards)`);
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to fetch RisuRealm trending page:', error);
+                    toastr.error('Failed to load page');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = action === 'next'
+                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
+                        : '<i class="fa-solid fa-angle-left"></i> Previous';
+                }
+            };
+
+            if (action === 'prev' && risuRealmApiState.page > 1) {
+                await fetchApiPage(risuRealmApiState.page - 1);
+            } else if (action === 'next' && risuRealmApiState.hasMore) {
+                await fetchApiPage(risuRealmApiState.page + 1);
+            }
+        });
+    });
+}
+
+function setupBackyardTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+    const pagination = gridContainer.querySelector('.bot-browser-pagination');
+    if (!pagination) return;
+
+    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+
+            if (action === 'next' && backyardTrendingState.hasMore) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+
+                try {
+                    console.log('[Bot Browser] Loading more Backyard.ai trending');
+                    const result = await loadMoreBackyardTrending({
+                        type: extension_settings[extensionName].hideNsfw ? 'sfw' : 'all'
+                    });
+                    const cards = result.characters.map(card => ({
+                        ...transformBackyardCard(card),
+                        sourceService: 'backyard_trending',
+                        isTrending: true
+                    }));
+
+                    // Append new cards
+                    state.currentCards = [...state.currentCards, ...cards];
+                    state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
+                    state.currentPage = 1;
+                    state.totalPages = 1;
+
+                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+                    console.log(`[Bot Browser] Loaded ${cards.length} more Backyard.ai trending cards`);
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load Backyard.ai trending:', error);
+                    toastr.error('Failed to load more cards');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Load More <i class="fa-solid fa-angle-right"></i>';
+                }
+            }
+        });
+    });
+}
+
+function setupBackyardPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+    const pagination = gridContainer.querySelector('.bot-browser-pagination');
+    if (!pagination) return;
+
+    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+
+            if (action === 'next' && backyardApiState.hasMore) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+
+                try {
+                    console.log('[Bot Browser] Loading more Backyard.ai cards');
+                    const cards = await loadMoreBackyardCharacters({
+                        type: extension_settings[extensionName].hideNsfw ? 'sfw' : 'all'
+                    });
+
+                    // Append new cards
+                    state.currentCards = [...state.currentCards, ...cards];
+                    state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
+                    state.currentPage = 1;
+                    state.totalPages = 1;
+
+                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+                    console.log(`[Bot Browser] Loaded ${cards.length} more Backyard.ai cards`);
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load more Backyard.ai cards:', error);
+                    toastr.error('Failed to load more cards');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Load More <i class="fa-solid fa-angle-right"></i>';
+                }
+            }
+        });
+    });
+}
+
+function setupPygmalionPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+    const pagination = gridContainer.querySelector('.bot-browser-pagination');
+    if (!pagination) return;
+
+    const isTrending = state.isPygmalionTrending;
+
+    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+
+            if (action === 'next' && pygmalionApiState.hasMore) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+
+                try {
+                    console.log(`[Bot Browser] Loading more Pygmalion ${isTrending ? 'trending ' : ''}cards`);
+                    let cards = await loadMorePygmalionCharacters({
+                        includeSensitive: !extension_settings[extensionName].hideNsfw
+                    });
+
+                    // Add trending flags if this is trending view
+                    if (isTrending) {
+                        cards = cards.map(card => ({
+                            ...card,
+                            sourceService: 'pygmalion_trending',
+                            isTrending: true
+                        }));
+                    }
+
+                    // Append new cards
+                    state.currentCards = [...state.currentCards, ...cards];
+                    state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
+                    state.currentPage = 1;
+                    state.totalPages = 1;
+
+                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+                    console.log(`[Bot Browser] Loaded ${cards.length} more Pygmalion ${isTrending ? 'trending ' : ''}cards`);
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load more Pygmalion cards:', error);
+                    toastr.error('Failed to load more cards');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Load More <i class="fa-solid fa-angle-right"></i>';
+                }
+            }
+        });
+    });
+}
+
+function setupRisuRealmPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+    const pagination = gridContainer.querySelector('.bot-browser-pagination');
+    if (!pagination) return;
+
+    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+            let targetPage = risuRealmApiState.page;
+
+            if (action === 'next' && risuRealmApiState.hasMore) {
+                targetPage = risuRealmApiState.page + 1;
+            } else if (action === 'prev' && risuRealmApiState.page > 1) {
+                targetPage = risuRealmApiState.page - 1;
+            } else {
+                return; // No valid action
+            }
+
+            btn.disabled = true;
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+            try {
+                console.log(`[Bot Browser] Loading RisuRealm page ${targetPage}`);
+                const result = await searchRisuRealm({
+                    page: targetPage,
+                    sort: risuRealmApiState.lastSort,
+                    search: risuRealmApiState.lastSearch,
+                    nsfw: !extension_settings[extensionName].hideNsfw
+                });
+
+                const cards = result.cards.map(card => ({
+                    ...transformRisuRealmCard(card),
+                    sourceService: 'risuai_realm',
+                    isLiveApi: true
+                }));
+
+                // Replace cards (page navigation style)
+                state.currentCards = cards;
+                state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
+                state.currentPage = 1;
+                state.totalPages = 1;
+
+                renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+                console.log(`[Bot Browser] Loaded RisuRealm page ${risuRealmApiState.page} (${cards.length} cards)`);
+            } catch (error) {
+                console.error('[Bot Browser] Failed to load RisuRealm page:', error);
+                toastr.error('Failed to load page');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
             }
         });
     });

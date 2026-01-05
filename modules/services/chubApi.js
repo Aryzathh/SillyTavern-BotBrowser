@@ -57,9 +57,12 @@ export async function searchChubCards(options = {}) {
  */
 export async function getChubCharacter(fullPath) {
     // Use the gateway API which has the full definition data
-    const response = await fetch(`https://gateway.chub.ai/api/characters/${fullPath}?full=true`, {
+    // Add cache-busting parameter to always get the latest version
+    const nocache = Math.random().toString().substring(2);
+    const response = await fetch(`https://gateway.chub.ai/api/characters/${fullPath}?full=true&nocache=${nocache}`, {
         headers: {
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache'
         }
     });
 
@@ -121,25 +124,70 @@ export function transformFullChubCharacter(charData) {
     const definition = node.definition || {};
 
     // Gateway API stores full character data in node.definition
-    // NOTE: Chub's "description" field is changelog/notes, NOT the character description
-    // The actual character description (what SillyTavern shows) is in "personality"
+    // CORRECT Field mapping based on actual Chub API response:
+    // - definition.description = main character/world description (maps to ST's "description")
+    // - definition.personality = additional personality/world content (append to description or use as personality)
+    // - definition.name = character name (often different from project_name)
+    // - node.tagline = short description shown on Chub (use as creator_notes if no dedicated field)
+    // - node.project_name = display name on Chub site
 
-    // Get related lorebooks (first valid one, excluding -1)
+    // Get related lorebooks (valid ones, excluding -1)
     const relatedLorebooks = (node.related_lorebooks || []).filter(id => id > 0);
 
+    // Use project_name if available (this is what Chub shows as the card title)
+    // Fall back to definition.name, then node.name
+    const cardName = definition.project_name || node.project_name || definition.name || node.name || 'Unnamed';
+
+    // Description: Chub's definition.description IS the main character description
+    const mainDescription = definition.description || node.description || '';
+
+    // Personality: Some cards have additional content here
+    const personalityContent = definition.personality || node.personality || '';
+
+    // For ST, combine description + personality if both exist, or just use description
+    // Many Chub cards put all content in description, personality is often duplicative or empty
+    let stDescription = mainDescription;
+    if (personalityContent && personalityContent !== mainDescription) {
+        // Only append if personality has unique content
+        stDescription = mainDescription + (mainDescription ? '\n\n' : '') + personalityContent;
+    }
+
+    // Creator notes: Chub uses tagline for this, or dedicated creator_notes field
+    const creatorNotes = definition.creator_notes ||
+                        node.creator_notes ||
+                        node.creatorNotes ||
+                        node.tagline || // Chub's tagline is often the creator's note/summary
+                        '';
+
+    console.log('[Bot Browser] Chub field extraction:', {
+        cardName,
+        projectName: definition.project_name || node.project_name,
+        definitionName: definition.name,
+        descriptionLength: mainDescription.length,
+        personalityLength: personalityContent.length,
+        creatorNotes: creatorNotes?.substring(0, 100),
+        relatedLorebooks: relatedLorebooks,
+        embeddedLorebook: !!(definition.embedded_lorebook || node.embedded_lorebook)
+    });
+
     return {
-        name: definition.name || node.name || 'Unnamed',
-        description: definition.personality || node.personality || '',
-        personality: '', // Chub doesn't have a separate personality field
+        name: cardName,
+        description: stDescription,
+        personality: '', // We merged personality into description above
         scenario: definition.scenario || node.scenario || '',
         first_message: definition.first_message || node.first_message || node.firstMessage || '',
         mes_example: definition.example_dialogs || node.example_dialogs || node.exampleDialogs || '',
-        creator_notes: definition.creator_notes || node.creator_notes || node.creatorNotes || '',
+        creator_notes: creatorNotes,
         system_prompt: definition.system_prompt || node.system_prompt || node.systemPrompt || '',
         post_history_instructions: definition.post_history_instructions || node.post_history_instructions || '',
         alternate_greetings: definition.alternate_greetings || node.alternate_greetings || node.alternateGreetings || [],
-        // Include embedded lorebook if present
-        character_book: definition.embedded_lorebook || node.embedded_lorebook || undefined,
+        // Include embedded lorebook if present and has entries
+        // Some cards have empty embedded_lorebook objects that we should ignore
+        character_book: (definition.embedded_lorebook?.entries && Object.keys(definition.embedded_lorebook.entries).length > 0)
+            ? definition.embedded_lorebook
+            : (node.embedded_lorebook?.entries && Object.keys(node.embedded_lorebook.entries).length > 0)
+                ? node.embedded_lorebook
+                : undefined,
         // Include related lorebook IDs for fetching if no embedded lorebook
         related_lorebooks: relatedLorebooks.length > 0 ? relatedLorebooks : undefined,
         tags: node.topics || [],
@@ -147,7 +195,7 @@ export function transformFullChubCharacter(charData) {
         character_version: node.version || '1.0',
         // Store tagline for preview
         tagline: node.tagline || '',
-        // Store website description for display (tagline is the short description shown on Chub)
+        // Store website description for display
         website_description: node.tagline || '',
         extensions: {
             chub: {
@@ -254,33 +302,35 @@ export async function searchChubLorebooks(options = {}) {
 
 /**
  * Get full lorebook data from Chub Gateway repository API
- * @param {string} nodeId - The lorebook node ID
+ * @param {string|number} nodeId - The lorebook node ID
  * @returns {Promise<Object|null>} Full lorebook data or null if unavailable
  */
 export async function getChubLorebook(nodeId) {
     const nocache = Math.random().toString().substring(2);
     const repoUrl = `${CHUB_GATEWAY_BASE}/api/v4/projects/${nodeId}/repository/files/raw%252Fsillytavern_raw.json/raw?ref=main&response_type=blob&nocache=0.${nocache}`;
 
-    console.log('[Bot Browser] Fetching lorebook data:', repoUrl);
+    try {
+        const response = await fetch(repoUrl, {
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
+        });
 
-    const response = await fetch(repoUrl, {
-        headers: {
-            'Accept': 'application/json'
+        // 404 or 500 means private/deleted/not processed
+        if (response.status === 404 || response.status === 500) {
+            return null;
         }
-    });
 
-    // 404 or 500 means private/deleted/not processed
-    if (response.status === 404 || response.status === 500) {
-        console.log(`[Bot Browser] Lorebook unavailable (${response.status})`);
-        return null;
+        if (!response.ok) {
+            throw new Error(`Failed to fetch lorebook ${nodeId}: ${response.status}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.warn('[Bot Browser] Lorebook fetch error:', nodeId);
+        throw error;
     }
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch lorebook ${nodeId}: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data;
 }
 
 /**

@@ -18,8 +18,27 @@ import {
     fetchCharacterTavernTrending, transformCharacterTavernTrendingCard,
     fetchChubTrending, transformChubTrendingCard, resetChubTrendingState, chubTrendingState,
     fetchWyvernTrending, transformWyvernTrendingCard, resetWyvernTrendingState, wyvernTrendingState,
-    fetchJannyTrending, transformJannyTrendingCard, resetJannyTrendingState, jannyTrendingState, loadMoreJannyTrending
+    fetchJannyTrending, transformJannyTrendingCard, resetJannyTrendingState, jannyTrendingState, loadMoreJannyTrending,
+    fetchBackyardTrending, transformBackyardTrendingCard, resetBackyardTrendingState, backyardTrendingState, loadMoreBackyardTrending
 } from './modules/services/trendingApi.js';
+import {
+    searchBackyardCharacters, transformBackyardCard, resetBackyardApiState, backyardApiState, BACKYARD_SORT_TYPES,
+    getBackyardUserProfile
+} from './modules/services/backyardApi.js';
+import { preloadPuter } from './modules/services/corsProxy.js';
+import {
+    searchPygmalionCharacters, browsePygmalionCharacters, getPygmalionCharacter,
+    getPygmalionCharactersByOwner, transformPygmalionCard, transformFullPygmalionCharacter,
+    pygmalionApiState, resetPygmalionApiState, PYGMALION_SORT_TYPES
+} from './modules/services/pygmalionApi.js';
+import { initUpdateChecker } from './modules/services/updateChecker.js';
+import { searchRisuRealm, transformRisuRealmCard, resetRisuRealmState, risuRealmApiState, fetchRisuRealmTrending } from './modules/services/risuRealmApi.js';
+import { searchChubCards, transformChubCard } from './modules/services/chubApi.js';
+import { fetchWyvernCreatorCards } from './modules/services/wyvernApi.js';
+import { searchCharacterTavern } from './modules/services/characterTavernApi.js';
+
+// Extension version (from manifest.json)
+const EXTENSION_VERSION = '1.1.3';
 
 // Extension name and settings
 const extensionName = 'BotBrowser';
@@ -112,6 +131,18 @@ const randomServiceOptions = [
         iconUrl: 'https://tse3.mm.bing.net/th/id/OIP.nb-qi0od9W6zRsskVwL6QAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3',
         iconSize: 'cover',
     },
+    {
+        id: 'backyard',
+        name: 'Backyard.ai',
+        iconUrl: 'https://backyard.ai/favicon.png',
+        iconSize: 'cover',
+    },
+    {
+        id: 'pygmalion',
+        name: 'Pygmalion',
+        iconUrl: 'https://files.catbox.moe/sw0crk.png',
+        iconSize: '85%',
+    },
 ];
 
 function getDefaultRandomServiceSettings() {
@@ -140,6 +171,7 @@ const defaultSettings = {
     quillgenApiKey: '',
     useChubLiveApi: true,
     useCharacterTavernLiveApi: true,
+    useRisuRealmLiveApi: true,
     useMlpchagLiveApi: true,
     useWyvernLiveApi: true,
     autoClearFilters: true,
@@ -252,14 +284,177 @@ async function showCardDetailWrapper(card, save = true, isRandom = false) {
     // Creator link
     const creatorLink = detailModal.querySelector('.bot-browser-creator-link');
     if (creatorLink) {
-        creatorLink.addEventListener('click', (e) => {
+        creatorLink.addEventListener('click', async (e) => {
             e.stopPropagation();
             e.preventDefault();
             const creator = creatorLink.dataset.creator;
-            console.log('[Bot Browser] Filtering by creator:', creator);
+            const card = state.selectedCard;
+            console.log('[Bot Browser] Creator clicked:', creator);
+            console.log('[Bot Browser] Card service flags:', {
+                service: card?.service,
+                sourceService: card?.sourceService,
+                isJannyAI: card?.isJannyAI,
+                isRisuRealm: card?.isRisuRealm,
+                isBackyard: card?.isBackyard,
+                isChub: card?.isLiveChub
+            });
 
             closeDetailModal();
 
+            // Check if we can use live API for creator search
+            const isChub = card?.service === 'chub' || card?.sourceService === 'chub' || card?.isLiveChub;
+            const isWyvern = card?.service === 'wyvern' || card?.sourceService?.includes('wyvern') || card?.isWyvern;
+            const isCharacterTavern = card?.service === 'character_tavern' || card?.sourceService === 'character_tavern';
+
+            // Save previous state for back button
+            state.previousCards = [...state.currentCards];
+            state.previousService = state.currentService;
+            state.isCreatorPage = true;
+            state.creatorPageSource = card?.service || card?.sourceService;
+
+            if (isChub && creator) {
+                // Use Chub API to search by username (using @username syntax)
+                try {
+                    toastr.info(`Loading cards by ${escapeHTML(creator)}...`, '', { timeOut: 2000 });
+                    const result = await searchChubCards({
+                        search: `@${creator}`,
+                        limit: 200,
+                        sort: 'download_count',
+                        nsfw: !extension_settings[extensionName].hideNsfw
+                    });
+                    // Chub API returns { data: { nodes: [...] } }
+                    const nodes = result?.data?.nodes || result?.nodes || [];
+                    const cards = nodes.map(transformChubCard);
+
+                    if (cards.length > 0) {
+                        createCardBrowser(`Cards by ${creator}`, cards, state, extensionName, extension_settings, showCardDetailWrapper);
+                        toastr.success(`Found ${cards.length} cards by ${escapeHTML(creator)}`);
+                    } else {
+                        toastr.info(`No cards found by ${escapeHTML(creator)}`);
+                        state.isCreatorPage = false;
+                    }
+                    return;
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load Chub creator cards:', error);
+                    state.isCreatorPage = false;
+                    // Fall through to local filter
+                }
+            }
+
+            if (isWyvern && card?.creatorUid) {
+                // Use Wyvern API to get creator's cards
+                try {
+                    toastr.info(`Loading cards by ${escapeHTML(creator)}...`, '', { timeOut: 2000 });
+                    const result = await fetchWyvernCreatorCards({ uid: card.creatorUid });
+
+                    if (result.cards.length > 0) {
+                        createCardBrowser(`Cards by ${creator}`, result.cards, state, extensionName, extension_settings, showCardDetailWrapper);
+                        toastr.success(`Found ${result.cards.length} cards by ${escapeHTML(creator)}`);
+                    } else {
+                        toastr.info(`No cards found by ${escapeHTML(creator)}`);
+                        state.isCreatorPage = false;
+                    }
+                    return;
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load Wyvern creator cards:', error);
+                    state.isCreatorPage = false;
+                    // Fall through to local filter
+                }
+            }
+
+            if (isCharacterTavern && creator) {
+                // Use Character Tavern API to search by author name
+                try {
+                    toastr.info(`Loading cards by ${escapeHTML(creator)}...`, '', { timeOut: 2000 });
+                    // searchCharacterTavern already returns transformed cards
+                    const cards = await searchCharacterTavern({
+                        query: creator,
+                        limit: 100
+                    });
+
+                    if (cards && cards.length > 0) {
+                        createCardBrowser(`Cards by ${creator}`, cards, state, extensionName, extension_settings, showCardDetailWrapper);
+                        toastr.success(`Found ${cards.length} cards by ${escapeHTML(creator)}`);
+                    } else {
+                        toastr.info(`No cards found by ${escapeHTML(creator)}`);
+                        state.isCreatorPage = false;
+                    }
+                    return;
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load Character Tavern creator cards:', error);
+                    state.isCreatorPage = false;
+                    // Fall through to local filter
+                }
+            }
+
+            const isBackyard = card?.isBackyard || card?.service === 'backyard' || card?.sourceService?.includes('backyard');
+            console.log('[Bot Browser] Backyard creator check:', { isBackyard, creator, cardService: card?.service, cardSourceService: card?.sourceService });
+            if (isBackyard && creator) {
+                // Use Backyard user profile API to get all cards by creator
+                toastr.info(`Loading cards by ${escapeHTML(creator)}...`, '', { timeOut: 2000 });
+
+                try {
+                    console.log('[Bot Browser] Fetching Backyard user profile for:', creator);
+                    const result = await getBackyardUserProfile(creator, {
+                        sortBy: BACKYARD_SORT_TYPES.POPULAR
+                    });
+                    console.log('[Bot Browser] Backyard user profile result:', result);
+
+                    const cards = result.characters.map(transformBackyardCard);
+                    console.log('[Bot Browser] Transformed Backyard cards:', cards.length);
+
+                    if (cards.length > 0) {
+                        state.isCreatorPage = true;
+                        createCardBrowser(`Cards by ${creator}`, cards, state, extensionName, extension_settings, showCardDetailWrapper);
+                        toastr.success(`Found ${cards.length} cards by ${escapeHTML(creator)}`);
+                    } else {
+                        toastr.info(`No cards found by ${escapeHTML(creator)}`);
+                        state.isCreatorPage = false;
+                    }
+                    return;
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load Backyard creator cards:', error);
+                    toastr.error(`Failed to load cards by ${escapeHTML(creator)}: ${error.message}`);
+                    state.isCreatorPage = false;
+                    // Fall through to local filter
+                }
+            }
+
+            const isPygmalion = card?.isPygmalion || card?.service === 'pygmalion' || card?.sourceService?.includes('pygmalion');
+            const creatorId = card?.creatorId || card?._rawData?.owner?.id;
+            console.log('[Bot Browser] Pygmalion creator check:', { isPygmalion, creator, creatorId, cardService: card?.service, cardSourceService: card?.sourceService });
+            if (isPygmalion && creatorId) {
+                // Use Pygmalion CharactersByOwnerID API to get all cards by creator
+                toastr.info(`Loading cards by ${escapeHTML(creator)}...`, '', { timeOut: 2000 });
+
+                try {
+                    console.log('[Bot Browser] Fetching Pygmalion characters for owner:', creatorId);
+                    const result = await getPygmalionCharactersByOwner(creatorId);
+                    console.log('[Bot Browser] Pygmalion owner result:', result);
+
+                    const cards = result.characters.map(transformPygmalionCard);
+                    console.log('[Bot Browser] Transformed Pygmalion cards:', cards.length);
+
+                    if (cards.length > 0) {
+                        state.isCreatorPage = true;
+                        createCardBrowser(`Cards by ${creator}`, cards, state, extensionName, extension_settings, showCardDetailWrapper);
+                        toastr.success(`Found ${cards.length} cards by ${escapeHTML(creator)}`);
+                    } else {
+                        toastr.info(`No cards found by ${escapeHTML(creator)}`);
+                        state.isCreatorPage = false;
+                    }
+                    return;
+                } catch (error) {
+                    console.error('[Bot Browser] Failed to load Pygmalion creator cards:', error);
+                    toastr.error(`Failed to load cards by ${escapeHTML(creator)}: ${error.message}`);
+                    state.isCreatorPage = false;
+                    // Fall through to local filter
+                }
+            }
+
+            // Default: filter currently loaded cards locally
+            // Note: API limitation warnings are shown via UI banner when source loads
+            state.isCreatorPage = false;
             state.filters.creator = creator;
             const creatorFilterDropdown = document.querySelector('.bot-browser-creator-filter');
             if (creatorFilterDropdown) {
@@ -267,7 +462,7 @@ async function showCardDetailWrapper(card, save = true, isRandom = false) {
             }
             refreshCardGrid(state, extensionName, extension_settings, showCardDetailWrapper);
 
-            toastr.success(`Showing all cards by ${escapeHTML(creator)}`, 'Filtered by Creator');
+            toastr.success(`Showing cards by ${escapeHTML(creator)} (filtered locally)`, 'Filtered by Creator');
         });
     }
 
@@ -348,6 +543,24 @@ function navigateToSources() {
         navigateBackToCollections();
         return;
     }
+
+    // Check if we're on a creator page and should go back to previous cards
+    if (state.isCreatorPage && state.previousCards && state.previousCards.length > 0) {
+        state.isCreatorPage = false;
+        state.currentCards = state.previousCards;
+        state.previousCards = [];
+
+        // Restore the card browser with previous cards
+        const serviceName = state.previousService || state.creatorPageSource || 'Cards';
+        createCardBrowser(serviceName, state.currentCards, state, extensionName, extension_settings, showCardDetailWrapper);
+        return;
+    }
+
+    // Reset creator page state
+    state.isCreatorPage = false;
+    state.previousCards = [];
+    state.previousService = null;
+    state.creatorPageSource = null;
 
     // Reset collections state when going back to main sources
     collectionsState.viewingCollectionCharacters = false;
@@ -835,6 +1048,46 @@ async function loadTrendingSource(sourceName, menu) {
             cards = (result.characters || []).map(transformJannyTrendingCard);
             trendingState.hasMore = result.hasMore;
 
+        } else if (sourceName === 'risuai_realm_trending') {
+            displayName = 'RisuRealm Trending';
+            resetRisuRealmState();
+            const result = await fetchRisuRealmTrending({
+                page: 1,
+                nsfw: !extension_settings[extensionName].hideNsfw
+            });
+            cards = result.cards.map(card => ({
+                ...transformRisuRealmCard(card),
+                sourceService: 'risuai_realm_trending',
+                isTrending: true
+            }));
+            trendingState.hasMore = result.hasMore;
+
+        } else if (sourceName === 'backyard_trending') {
+            displayName = 'Backyard.ai Trending';
+            resetBackyardTrendingState();
+            const hideNsfw = extension_settings[extensionName].hideNsfw;
+            const result = await fetchBackyardTrending({
+                sortBy: BACKYARD_SORT_TYPES.TRENDING,
+                type: hideNsfw ? 'sfw' : 'all'
+            });
+            cards = (result.characters || []).map(transformBackyardTrendingCard);
+            trendingState.hasMore = result.hasMore;
+
+        } else if (sourceName === 'pygmalion_trending') {
+            displayName = 'Pygmalion Trending';
+            resetPygmalionApiState();
+            const hideNsfw = extension_settings[extensionName].hideNsfw;
+            const result = await browsePygmalionCharacters({
+                orderBy: PYGMALION_SORT_TYPES.VIEWS,
+                includeSensitive: !hideNsfw
+            });
+            cards = result.characters.map(card => ({
+                ...card,
+                sourceService: 'pygmalion_trending',
+                isTrending: true
+            }));
+            trendingState.hasMore = result.hasMore;
+
         } else {
             toastr.warning('Unknown trending source');
             return;
@@ -856,7 +1109,7 @@ async function loadTrendingSource(sourceName, menu) {
 
     } catch (error) {
         console.error('[Bot Browser] Error loading trending:', error);
-        toastr.error(`Failed to load trending: ${error.message}`);
+        toastr.error(`Failed to load trending`);
     }
 }
 
@@ -890,44 +1143,205 @@ function setupSourceButtons(menu) {
                 let cards = [];
 
                 if (sourceName === 'all') {
-                    toastr.info('Loading all cards...', '', { timeOut: 2000 });
+                    toastr.info('Loading all cards (including live APIs)...', '', { timeOut: 2000 });
 
-                    // Services that use static archives (can be aggregated)
-                    // Exclude Chub if live API is enabled, and always exclude JannyAI (always live)
-                    const staticServices = ['anchorhold', 'catbox', 'character_tavern', 'nyai_me', 'risuai_realm', 'webring', 'mlpchag', 'desuarchive'];
+                    // Services that use static archives only
+                    const staticServices = ['anchorhold', 'catbox', 'nyai_me', 'webring', 'desuarchive'];
 
                     // Add Chub only if using archive mode (not live API)
                     if (!useLiveChubApi) {
                         staticServices.push('chub');
                     }
 
-                    // Show warning about excluded live API services
-                    const excludedServices = [];
-                    if (useLiveChubApi) excludedServices.push('Chub');
-                    excludedServices.push('JannyAI'); // Always excluded (always live)
-
-                    if (excludedServices.length > 0) {
-                        toastr.warning(
-                            `${excludedServices.join(' & ')} excluded (requires live API). Search them individually for full results.`,
-                            'Some sources excluded',
-                            { timeOut: 5000 }
-                        );
+                    // Add RisuRealm only if using archive mode
+                    const useRisuRealmLiveApi = extension_settings[extensionName].useRisuRealmLiveApi !== false;
+                    if (!useRisuRealmLiveApi) {
+                        staticServices.push('risuai_realm');
                     }
 
-                    // Load all static services in parallel for better performance
+                    // Add Character Tavern only if using archive mode
+                    const useCharacterTavernLiveApi = extension_settings[extensionName].useCharacterTavernLiveApi !== false;
+                    if (!useCharacterTavernLiveApi) {
+                        staticServices.push('character_tavern');
+                    }
+
+                    // Add Wyvern only if using archive mode
+                    const useWyvernLiveApi = extension_settings[extensionName].useWyvernLiveApi !== false;
+                    if (!useWyvernLiveApi) {
+                        staticServices.push('wyvern');
+                    }
+
+                    // Add MLPchag only if using archive mode
+                    const useMlpchagLiveApi = extension_settings[extensionName].useMlpchagLiveApi !== false;
+                    if (!useMlpchagLiveApi) {
+                        staticServices.push('mlpchag');
+                    }
+
+                    // Load all static services in parallel
                     const servicePromises = staticServices.map(service => {
                         return loadServiceIndex(service, false).then(serviceCards =>
                             serviceCards.map(card => ({
                                 ...card,
                                 sourceService: service
                             }))
-                        );
+                        ).catch(err => {
+                            console.warn(`[Bot Browser] Failed to load ${service}:`, err);
+                            return [];
+                        });
                     });
 
-                    const allServiceCards = await Promise.all(servicePromises);
-                    cards = allServiceCards.flat();
+                    // Also load live APIs in parallel
+                    const liveApiPromises = [];
 
-                    console.log(`[Bot Browser] Loaded ${cards.length} cards from ${staticServices.length} static sources`);
+                    if (useLiveChubApi) {
+                        liveApiPromises.push(
+                            searchChubCards({
+                                search: '',
+                                limit: 100,
+                                sort: 'download_count',
+                                nsfw: !extension_settings[extensionName].hideNsfw
+                            }).then(result => {
+                                // Chub API returns { data: { nodes: [...] } }
+                                const nodes = result?.data?.nodes || result?.nodes || [];
+                                return nodes.map(node => ({
+                                    ...transformChubCard(node),
+                                    sourceService: 'chub',
+                                    isLiveChub: true
+                                }));
+                            }).catch(err => {
+                                console.warn('[Bot Browser] Failed to load Chub live API:', err);
+                                return [];
+                            })
+                        );
+                    }
+
+                    if (useRisuRealmLiveApi) {
+                        liveApiPromises.push(
+                            searchRisuRealm({
+                                search: '',
+                                page: 1,
+                                sort: 'recommended',
+                                nsfw: !extension_settings[extensionName].hideNsfw
+                            }).then(result =>
+                                result.cards.map(card => ({
+                                    ...transformRisuRealmCard(card),
+                                    sourceService: 'risuai_realm',
+                                    isLiveApi: true
+                                }))
+                            ).catch(err => {
+                                console.warn('[Bot Browser] Failed to load RisuRealm live API:', err);
+                                return [];
+                            })
+                        );
+                    }
+
+                    // Pygmalion - always live API
+                    liveApiPromises.push(
+                        searchPygmalionCharacters({
+                            orderBy: PYGMALION_SORT_TYPES.VIEWS,
+                            includeSensitive: !extension_settings[extensionName].hideNsfw,
+                            pageSize: 60
+                        }).then(result =>
+                            result.characters.map(card => ({
+                                ...transformPygmalionCard(card),
+                                sourceService: 'pygmalion',
+                                isLiveApi: true
+                            }))
+                        ).catch(err => {
+                            console.warn('[Bot Browser] Failed to load Pygmalion live API:', err);
+                            return [];
+                        })
+                    );
+
+                    // Backyard.ai - always live API
+                    liveApiPromises.push(
+                        searchBackyardCharacters({
+                            sortBy: BACKYARD_SORT_TYPES.TRENDING,
+                            type: extension_settings[extensionName].hideNsfw ? 'sfw' : 'all'
+                        }).then(result =>
+                            result.characters.map(card => ({
+                                ...transformBackyardCard(card),
+                                sourceService: 'backyard',
+                                isLiveApi: true
+                            }))
+                        ).catch(err => {
+                            console.warn('[Bot Browser] Failed to load Backyard.ai live API:', err);
+                            return [];
+                        })
+                    );
+
+                    // Character Tavern - live API if enabled
+                    if (useCharacterTavernLiveApi) {
+                        liveApiPromises.push(
+                            searchCharacterTavern({
+                                sort: 'trending',
+                                nsfw: !extension_settings[extensionName].hideNsfw
+                            }).then(result =>
+                                result.characters.map(card => ({
+                                    ...card,
+                                    sourceService: 'character_tavern',
+                                    isLiveApi: true
+                                }))
+                            ).catch(err => {
+                                console.warn('[Bot Browser] Failed to load Character Tavern live API:', err);
+                                return [];
+                            })
+                        );
+                    }
+
+                    // Wyvern - live API if enabled
+                    if (useWyvernLiveApi) {
+                        liveApiPromises.push(
+                            import('./modules/services/wyvernApi.js').then(({ searchWyvernCards, transformWyvernCard }) =>
+                                searchWyvernCards({ sort: 'downloads', nsfw: !extension_settings[extensionName].hideNsfw })
+                                    .then(result =>
+                                        (result.characters || []).map(card => ({
+                                            ...transformWyvernCard(card),
+                                            sourceService: 'wyvern',
+                                            isLiveApi: true
+                                        }))
+                                    )
+                            ).catch(err => {
+                                console.warn('[Bot Browser] Failed to load Wyvern live API:', err);
+                                return [];
+                            })
+                        );
+                    }
+
+                    // MLPchag - live API if enabled
+                    if (useMlpchagLiveApi) {
+                        liveApiPromises.push(
+                            import('./modules/services/mlpchagApi.js').then(({ loadMlpchagLive }) =>
+                                loadMlpchagLive().then(cards =>
+                                    cards.map(card => ({
+                                        ...card,
+                                        sourceService: 'mlpchag',
+                                        isLiveApi: true
+                                    }))
+                                )
+                            ).catch(err => {
+                                console.warn('[Bot Browser] Failed to load MLPchag live API:', err);
+                                return [];
+                            })
+                        );
+                    }
+
+                    // Wait for all sources in parallel
+                    const [allServiceCards, ...liveApiCards] = await Promise.all([
+                        Promise.all(servicePromises),
+                        ...liveApiPromises
+                    ]);
+
+                    // Combine static and live API results
+                    cards = allServiceCards.flat();
+                    liveApiCards.forEach(apiCards => {
+                        cards = cards.concat(apiCards);
+                    });
+
+                    // JannyAI is always excluded (blocked by anti-bot)
+                    toastr.info('JanitorAI excluded (blocked by anti-bot protection)', '', { timeOut: 3000 });
+
+                    console.log(`[Bot Browser] Loaded ${cards.length} cards from all sources (${staticServices.length} archives + ${liveApiPromises.length} live APIs)`);
                 } else if (sourceName === 'my_imports') {
                     // Load imported cards from local storage
                     toastr.info('Loading your imports...', '', { timeOut: 2000 });
@@ -984,10 +1398,118 @@ function setupSourceButtons(menu) {
                     // Create collections browser instead of card browser
                     createCollectionsBrowser(collectionsData, menu);
                     return; // Don't call createCardBrowser
+                } else if (sourceName === 'jannyai_trending') {
+                    // JanitorAI trending is unavailable due to anti-bot protection
+                    toastr.warning('JanitorAI Trending is currently unavailable. JanitorAI blocks automated access to their trending API.', 'Unavailable', { timeOut: 5000 });
+                    return;
                 } else if (sourceName.endsWith('_trending')) {
                     // Trending sources - load from respective APIs
                     await loadTrendingSource(sourceName, menu);
                     return;
+                } else if (sourceName === 'risuai_realm') {
+                    // RisuRealm - try live API first, fallback to archive
+                    const useRisuRealmLiveApi = extension_settings[extensionName].useRisuRealmLiveApi !== false;
+
+                    if (useRisuRealmLiveApi) {
+                        try {
+                            toastr.info('Loading RisuRealm (Live)...', '', { timeOut: 2000 });
+                            resetRisuRealmState();
+
+                            const autoClear = extension_settings[extensionName].autoClearFilters !== false;
+                            const persistedSearch = autoClear ? null : loadPersistentSearch(extensionName, extension_settings, sourceName);
+
+                            // Map sort options
+                            let risuSort = 'recommended';
+                            const sortBy = persistedSearch?.sortBy || extension_settings[extensionName].defaultSortBy || 'relevance';
+                            if (sortBy === 'date_desc' || sortBy === 'date_asc') risuSort = 'date';
+                            else if (sortBy === 'relevance') risuSort = 'download';
+
+                            const result = await searchRisuRealm({
+                                search: persistedSearch?.filters?.search || '',
+                                page: 1,
+                                sort: risuSort,
+                                nsfw: !extension_settings[extensionName].hideNsfw
+                            });
+
+                            cards = result.cards.map(transformRisuRealmCard);
+                            console.log(`[Bot Browser] Loaded ${cards.length} RisuRealm cards (live API)`);
+                        } catch (error) {
+                            console.warn('[Bot Browser] RisuRealm live API failed, falling back to archive:', error.message);
+                            toastr.warning('Live API failed, loading archive...', '', { timeOut: 2000 });
+                            cards = await loadServiceIndex(sourceName, false);
+                        }
+                    } else {
+                        toastr.info('Loading RisuRealm (Archive)...', '', { timeOut: 2000 });
+                        cards = await loadServiceIndex(sourceName, false);
+                    }
+                } else if (sourceName === 'backyard') {
+                    // Backyard.ai uses its own live API
+                    toastr.info('Loading Backyard.ai...', '', { timeOut: 2000 });
+                    resetBackyardApiState();
+
+                    const autoClear = extension_settings[extensionName].autoClearFilters !== false;
+                    const persistedSearch = autoClear ? null : loadPersistentSearch(extensionName, extension_settings, sourceName);
+
+                    // Map sort options to Backyard format
+                    let backyardSort = BACKYARD_SORT_TYPES.TRENDING;
+                    const sortBy = persistedSearch?.sortBy || extension_settings[extensionName].defaultSortBy || 'relevance';
+                    switch (sortBy) {
+                        case 'date_desc': backyardSort = BACKYARD_SORT_TYPES.NEW; break;
+                        case 'tokens_desc':
+                        case 'relevance':
+                        default: backyardSort = BACKYARD_SORT_TYPES.TRENDING; break;
+                    }
+
+                    const result = await searchBackyardCharacters({
+                        search: persistedSearch?.filters?.search || '',
+                        sortBy: backyardSort,
+                        type: extension_settings[extensionName].hideNsfw ? 'sfw' : 'all'
+                    });
+
+                    cards = result.characters.map(transformBackyardCard);
+
+                    // Update API state for pagination
+                    backyardApiState.cursor = result.nextCursor;
+                    backyardApiState.hasMore = result.hasMore;
+                    backyardApiState.lastSearch = persistedSearch?.filters?.search || '';
+                    backyardApiState.lastSort = backyardSort;
+                    backyardApiState.lastType = extension_settings[extensionName].hideNsfw ? 'sfw' : 'all';
+
+                    console.log(`[Bot Browser] Loaded ${cards.length} Backyard.ai cards, hasMore: ${result.hasMore}`);
+                } else if (sourceName === 'pygmalion') {
+                    // Pygmalion uses its own live API
+                    toastr.info('Loading Pygmalion...', '', { timeOut: 2000 });
+                    resetPygmalionApiState();
+
+                    const autoClear = extension_settings[extensionName].autoClearFilters !== false;
+                    const persistedSearch = autoClear ? null : loadPersistentSearch(extensionName, extension_settings, sourceName);
+
+                    // Map sort options to Pygmalion format
+                    let pygmalionSort = PYGMALION_SORT_TYPES.VIEWS;
+                    const sortBy = persistedSearch?.sortBy || extension_settings[extensionName].defaultSortBy || 'relevance';
+                    switch (sortBy) {
+                        case 'date_desc': pygmalionSort = PYGMALION_SORT_TYPES.NEWEST; break;
+                        case 'tokens_desc': pygmalionSort = PYGMALION_SORT_TYPES.TOKEN_COUNT; break;
+                        case 'relevance':
+                        default: pygmalionSort = PYGMALION_SORT_TYPES.VIEWS; break;
+                    }
+
+                    const result = await searchPygmalionCharacters({
+                        query: persistedSearch?.filters?.search || '',
+                        orderBy: pygmalionSort,
+                        includeSensitive: !extension_settings[extensionName].hideNsfw
+                    });
+
+                    cards = result.characters.map(transformPygmalionCard);
+
+                    // Update API state for pagination
+                    pygmalionApiState.page = 1;
+                    pygmalionApiState.hasMore = result.hasMore;
+                    pygmalionApiState.lastSearch = persistedSearch?.filters?.search || '';
+                    pygmalionApiState.lastSort = pygmalionSort;
+                    pygmalionApiState.totalItems = result.totalItems;
+
+                    console.log(`[Bot Browser] Loaded ${cards.length} Pygmalion cards, hasMore: ${result.hasMore}, total: ${result.totalItems}`);
                 } else {
                     toastr.info(`Loading ${sourceName}...`, '', { timeOut: 2000 });
 
@@ -1115,8 +1637,10 @@ async function playServiceRoulette(menu, preferSameService = null) {
 
         // Load a random card from the selected service
         let cards;
+        const useLiveChubApi = extension_settings[extensionName].useChubLiveApi !== false;
+        const useRisuRealmLiveApi = extension_settings[extensionName].useRisuRealmLiveApi !== false;
 
-        // Special handling for JannyAI - use live API
+        // Special handling for live APIs - use random pages for true randomness
         if (selectedService === 'jannyai') {
             const searchResults = await searchJannyCharacters({
                 search: '',
@@ -1126,6 +1650,36 @@ async function playServiceRoulette(menu, preferSameService = null) {
             });
             const results = searchResults.results?.[0] || {};
             cards = (results.hits || []).map(hit => transformJannyCard(hit));
+        } else if (selectedService === 'chub' && useLiveChubApi) {
+            // Chub live API - use random page for variety
+            const randomPage = Math.floor(Math.random() * 50) + 1; // Random page 1-50
+            const result = await searchChubCards({
+                search: '',
+                limit: 48,
+                page: randomPage,
+                sort: 'random', // Chub supports random sort
+                nsfw: !extension_settings[extensionName].hideNsfw
+            });
+            const nodes = result?.data?.nodes || result?.nodes || [];
+            cards = nodes.map(node => ({
+                ...transformChubCard(node),
+                sourceService: 'chub',
+                isLiveChub: true
+            }));
+        } else if (selectedService === 'risuai_realm' && useRisuRealmLiveApi) {
+            // RisuRealm live API - use random page for variety
+            const randomPage = Math.floor(Math.random() * 20) + 1; // Random page 1-20
+            const result = await searchRisuRealm({
+                search: '',
+                page: randomPage,
+                sort: 'download', // Mix it up with download sort
+                nsfw: !extension_settings[extensionName].hideNsfw
+            });
+            cards = result.cards.map(card => ({
+                ...transformRisuRealmCard(card),
+                sourceService: 'risuai_realm',
+                isLiveApi: true
+            }));
         } else {
             cards = await loadServiceIndex(selectedService);
         }
@@ -1378,6 +1932,21 @@ function showSettingsModal() {
                         <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
 
                         <div class="bb-setting-group" style="text-align: center;">
+                            <div style="display: inline-block; background: linear-gradient(135deg, #1e3a5f, #2d1b4e); border-radius: 8px; padding: 8px 16px; margin-bottom: 10px;">
+                                <span style="font-size: 18px; font-weight: bold; color: #7dd3fc;">RisuRealm</span>
+                            </div>
+                            <label class="bb-checkbox" style="justify-content: center;">
+                                <input type="checkbox" id="bb-setting-risurealm-live-api" ${settings.useRisuRealmLiveApi !== false ? 'checked' : ''}>
+                                <span>Use Live RisuRealm API</span>
+                            </label>
+                            <small style="color: rgba(255,255,255,0.5); display: block; margin-top: 8px;">
+                                Fetch characters from realm.risuai.net (live search, creator pages not supported)
+                            </small>
+                        </div>
+
+                        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+
+                        <div class="bb-setting-group" style="text-align: center;">
                             <div style="display: inline-block; background: linear-gradient(135deg, #2d1b4e, #1a2e1a); border-radius: 8px; padding: 8px 16px; margin-bottom: 10px;">
                                 <span style="font-size: 18px; font-weight: bold; color: #c9ffda;">MLPChag</span>
                             </div>
@@ -1536,6 +2105,7 @@ function showSettingsModal() {
         settings.tagBlocklist = blocklistText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         settings.useChubLiveApi = document.getElementById('bb-setting-chub-live-api').checked;
         settings.useCharacterTavernLiveApi = document.getElementById('bb-setting-ct-live-api').checked;
+        settings.useRisuRealmLiveApi = document.getElementById('bb-setting-risurealm-live-api').checked;
         settings.useMlpchagLiveApi = document.getElementById('bb-setting-mlpchag-live-api').checked;
         settings.useWyvernLiveApi = document.getElementById('bb-setting-wyvern-live-api').checked;
 
@@ -1882,6 +2452,12 @@ function createBotBrowserMenu() {
 
     applyBlurSetting();
 
+    // Check for updates (non-blocking, shows banner if update available)
+    const updateContainer = menu.querySelector('.bot-browser-content');
+    if (updateContainer) {
+        initUpdateChecker(updateContainer, EXTENSION_VERSION);
+    }
+
     console.log('[Bot Browser] Menu created and displayed');
 }
 
@@ -1961,6 +2537,9 @@ window.addEventListener('bot-browser-close', closeBotBrowserMenu);
 // Initialize extension
 jQuery(async () => {
     console.log('[Bot Browser] Extension loading...');
+
+    // Preload Puter.js for CORS-free fetching (loads in background)
+    preloadPuter();
 
     loadSettings();
 

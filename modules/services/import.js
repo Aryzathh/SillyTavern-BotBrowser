@@ -5,6 +5,54 @@ import { importWorldInfo } from '../../../../../world-info.js';
 import { default_avatar } from '../../../../../../script.js';
 import { loadCardChunk } from '../services/cache.js';
 import { fetchQuillgenCard } from '../services/quillgenApi.js';
+import { buildProxyUrl, PROXY_TYPES } from '../services/corsProxy.js';
+import { getPygmalionCharacter, transformFullPygmalionCharacter } from '../services/pygmalionApi.js';
+
+// Proxy chain for image fetching - uses corsProxy.js utilities
+const IMAGE_PROXY_CHAIN = [
+    PROXY_TYPES.CORSPROXY_IO,
+    PROXY_TYPES.CORS_LOL
+];
+
+/**
+ * Fetch an image with automatic CORS proxy fallback
+ * @param {string} imageUrl - The image URL to fetch
+ * @returns {Promise<Blob|null>} The image blob or null if all attempts fail
+ */
+async function fetchImageWithProxyChain(imageUrl) {
+    if (!imageUrl) return null;
+
+    // Try direct fetch first
+    try {
+        const response = await fetch(imageUrl);
+        if (response.ok) {
+            console.log('[Bot Browser] Direct image fetch succeeded:', imageUrl);
+            return await response.blob();
+        }
+    } catch (e) {
+        console.log('[Bot Browser] Direct fetch failed, trying proxies...');
+    }
+
+    // Try each proxy in the chain
+    for (let i = 0; i < IMAGE_PROXY_CHAIN.length; i++) {
+        try {
+            const proxyType = IMAGE_PROXY_CHAIN[i];
+            const proxyUrl = buildProxyUrl(proxyType, imageUrl);
+            if (!proxyUrl) continue;
+
+            const response = await fetch(proxyUrl);
+            if (response.ok) {
+                console.log(`[Bot Browser] Image fetched via ${proxyType}:`, imageUrl);
+                return await response.blob();
+            }
+        } catch (e) {
+            console.log(`[Bot Browser] Proxy ${IMAGE_PROXY_CHAIN[i]} failed for:`, imageUrl);
+        }
+    }
+
+    console.warn('[Bot Browser] All proxies failed for:', imageUrl);
+    return null;
+}
 
 // Import card to SillyTavern
 export async function importCardToSillyTavern(card, extensionName, extension_settings, importStats, getRequestHeaders, processDroppedFiles) {
@@ -162,42 +210,49 @@ async function importCharacter(card, extensionName, extension_settings, importSt
                 const fullCharData = transformFullChubCharacter(fullData);
                 card = { ...card, ...fullCharData };
 
-                // If no embedded lorebook but has related lorebooks, fetch and merge all of them
-                if (!fullCharData.character_book && fullCharData.related_lorebooks && fullCharData.related_lorebooks.length > 0) {
-                    console.log('[Bot Browser] Card has', fullCharData.related_lorebooks.length, 'related lorebooks:', fullCharData.related_lorebooks);
+                // If no embedded lorebook (or empty one) but has related lorebooks, fetch and merge all of them
+                const hasValidEmbeddedLorebook = fullCharData.character_book?.entries && fullCharData.character_book.entries.length > 0;
+
+                if (!hasValidEmbeddedLorebook && fullCharData.related_lorebooks && fullCharData.related_lorebooks.length > 0) {
+                    console.log('[Bot Browser] Fetching', fullCharData.related_lorebooks.length, 'related lorebooks');
                     const allEntries = [];
-                    let lastLorebookName = 'Linked Lorebook';
+                    const allLorebookNames = [];
+                    let successCount = 0;
 
                     for (const lorebookId of fullCharData.related_lorebooks) {
-                        console.log('[Bot Browser] Fetching lorebook ID:', lorebookId);
                         try {
                             const lorebookData = await getChubLorebook(lorebookId);
                             if (lorebookData) {
                                 const lorebookName = fullData.nodes?.[String(lorebookId)]?.name || `Lorebook ${lorebookId}`;
                                 const converted = convertWorldInfoToCharacterBook(lorebookData, lorebookName);
-                                allEntries.push(...converted.entries);
-                                lastLorebookName = lorebookName;
-                                console.log('[Bot Browser] ✓ Fetched lorebook:', lorebookName, 'with', converted.entries.length, 'entries, total now:', allEntries.length);
-                            } else {
-                                console.log('[Bot Browser] ✗ Lorebook returned null:', lorebookId);
+
+                                if (converted.entries && converted.entries.length > 0) {
+                                    allEntries.push(...converted.entries);
+                                    allLorebookNames.push(lorebookName);
+                                    successCount++;
+                                }
                             }
                         } catch (lorebookError) {
-                            console.warn('[Bot Browser] ✗ Failed to fetch lorebook', lorebookId, ':', lorebookError.message);
+                            console.warn('[Bot Browser] Failed to fetch lorebook', lorebookId);
                         }
                     }
 
                     if (allEntries.length > 0) {
-                        // Use the last lorebook's name (matches Chub behavior)
-                        card.character_book = {
-                            name: lastLorebookName,
-                            entries: allEntries
-                        };
-                        console.log('[Bot Browser] Final merged lorebook:', lastLorebookName, 'with', allEntries.length, 'total entries');
+                        const mergedName = allLorebookNames.length > 1
+                            ? `Merged: ${allLorebookNames.join(' + ')}`
+                            : allLorebookNames[0] || 'Linked Lorebook';
+
+                        // Reassign unique IDs to prevent conflicts when merging
+                        for (let i = 0; i < allEntries.length; i++) {
+                            allEntries[i].id = i + 1;
+                        }
+
+                        card.character_book = { name: mergedName, entries: allEntries };
+                        console.log('[Bot Browser] Merged', successCount, 'lorebooks with', allEntries.length, 'total entries');
                     }
                 }
 
                 // Always use API data for live Chub cards to avoid stale PNG cache
-                console.log('[Bot Browser] Using API-based import for fresh data');
                 return await importLiveChubCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
             }
         } catch (error) {
@@ -221,6 +276,18 @@ async function importCharacter(card, extensionName, extension_settings, importSt
     if (card.isWyvern || card.sourceService === 'wyvern_live' || card.service === 'wyvern') {
         console.log('[Bot Browser] Importing Wyvern card:', card.name);
         return await importWyvernCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+    }
+
+    // Handle Backyard.ai cards - full data is in _rawData
+    if (card.isBackyard || card.service === 'backyard' || card.sourceService === 'backyard' || card.sourceService === 'backyard_trending') {
+        console.log('[Bot Browser] Importing Backyard.ai card:', card.name);
+        return await importBackyardCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+    }
+
+    // Handle Pygmalion cards - need to fetch full data from API
+    if (card.isPygmalion || card.service === 'pygmalion' || card.sourceService === 'pygmalion' || card.sourceService === 'pygmalion_trending') {
+        console.log('[Bot Browser] Importing Pygmalion card:', card.name);
+        return await importPygmalionCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
     }
 
     // Determine which URL to use based on service
@@ -462,32 +529,13 @@ async function importJannyAICard(card, extensionName, extension_settings, import
     console.log('[Bot Browser] JannyAI V2 card data:', characterData);
 
     // Get the avatar image
-    let imageBlob;
-    const imageUrl = card.avatar_url;
+    // Try to fetch the image with proxy chain fallback
+    let imageBlob = await fetchImageWithProxyChain(card.avatar_url);
 
-    if (imageUrl) {
-        try {
-            // Try fetching directly first
-            let imageResponse = await fetch(imageUrl);
-
-            if (!imageResponse.ok) {
-                // Try with CORS proxy
-                console.log('[Bot Browser] Direct fetch failed, trying CORS proxy...');
-                const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(imageUrl)}`;
-                imageResponse = await fetch(proxyUrl);
-            }
-
-            if (imageResponse.ok) {
-                imageBlob = await imageResponse.blob();
-                console.log('[Bot Browser] ✓ Fetched JannyAI avatar image');
-            }
-        } catch (error) {
-            console.warn('[Bot Browser] Failed to fetch JannyAI avatar:', error);
-        }
-    }
-
-    // If no image available, use default avatar
-    if (!imageBlob) {
+    if (imageBlob) {
+        console.log('[Bot Browser] ✓ Fetched JannyAI avatar image');
+    } else {
+        // Use default avatar if image fetch failed
         console.log('[Bot Browser] Using default avatar for JannyAI card');
         const defaultAvatarResponse = await fetch(default_avatar);
         imageBlob = await defaultAvatarResponse.blob();
@@ -550,33 +598,13 @@ async function importCharacterTavernCard(card, extensionName, extension_settings
 
     console.log('[Bot Browser] Character Tavern V2 card data:', characterData);
 
-    // Get the avatar image
-    let imageBlob;
-    const imageUrl = card.avatar_url || card.image_url;
+    // Get the avatar image with proxy chain fallback
+    let imageBlob = await fetchImageWithProxyChain(card.avatar_url || card.image_url);
 
-    if (imageUrl) {
-        try {
-            // Try fetching directly first
-            let imageResponse = await fetch(imageUrl);
-
-            if (!imageResponse.ok) {
-                // Try with CORS proxy
-                console.log('[Bot Browser] Direct fetch failed, trying CORS proxy...');
-                const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(imageUrl)}`;
-                imageResponse = await fetch(proxyUrl);
-            }
-
-            if (imageResponse.ok) {
-                imageBlob = await imageResponse.blob();
-                console.log('[Bot Browser] ✓ Fetched Character Tavern avatar image');
-            }
-        } catch (error) {
-            console.warn('[Bot Browser] Failed to fetch Character Tavern avatar:', error);
-        }
-    }
-
-    // If no image available, use default avatar
-    if (!imageBlob) {
+    if (imageBlob) {
+        console.log('[Bot Browser] ✓ Fetched Character Tavern avatar image');
+    } else {
+        // Use default avatar if image fetch failed
         console.log('[Bot Browser] Using default avatar for Character Tavern card');
         const defaultAvatarResponse = await fetch(default_avatar);
         imageBlob = await defaultAvatarResponse.blob();
@@ -683,33 +711,13 @@ async function importWyvernCard(card, extensionName, extension_settings, importS
         'system_prompt': characterData.data.system_prompt?.substring(0, 100),
     });
 
-    // Get the avatar image
-    let imageBlob;
-    const imageUrl = card.avatar_url || card.image_url;
+    // Get the avatar image with proxy chain fallback
+    let imageBlob = await fetchImageWithProxyChain(card.avatar_url || card.image_url);
 
-    if (imageUrl) {
-        try {
-            // Try fetching directly first
-            let imageResponse = await fetch(imageUrl);
-
-            if (!imageResponse.ok) {
-                // Try with CORS proxy
-                console.log('[Bot Browser] Direct fetch failed, trying CORS proxy...');
-                const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(imageUrl)}`;
-                imageResponse = await fetch(proxyUrl);
-            }
-
-            if (imageResponse.ok) {
-                imageBlob = await imageResponse.blob();
-                console.log('[Bot Browser] ✓ Fetched Wyvern avatar image');
-            }
-        } catch (error) {
-            console.warn('[Bot Browser] Failed to fetch Wyvern avatar:', error);
-        }
-    }
-
-    // If no image available, use default avatar
-    if (!imageBlob) {
+    if (imageBlob) {
+        console.log('[Bot Browser] ✓ Fetched Wyvern avatar image');
+    } else {
+        // Use default avatar if image fetch failed
         console.log('[Bot Browser] Using default avatar for Wyvern card');
         const defaultAvatarResponse = await fetch(default_avatar);
         imageBlob = await defaultAvatarResponse.blob();
@@ -729,6 +737,165 @@ async function importWyvernCard(card, extensionName, extension_settings, importS
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Wyvern card imported successfully');
+
+    // Track import
+    return trackImport(extensionName, extension_settings, importStats, card, 'character');
+}
+
+// Import Backyard.ai card - uses transformed data from detail modal
+async function importBackyardCard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+    console.log('[Bot Browser] Importing Backyard.ai card with embedded data');
+
+    // Convert to Character Card V2 format - card already has transformed data
+    const characterData = {
+        spec: 'chara_card_v2',
+        spec_version: '2.0',
+        data: {
+            name: card.name || '',
+            description: card.description || '',
+            personality: card.personality || '',
+            scenario: card.scenario || '',
+            first_mes: card.first_mes || '',
+            mes_example: card.mes_example || '',
+            creator_notes: card.creator_notes || '',
+            system_prompt: card.system_prompt || '',
+            post_history_instructions: card.post_history_instructions || '',
+            creator: card.creator || '',
+            character_version: card.character_version || '1.0',
+            tags: card.tags || [],
+            alternate_greetings: card.alternate_greetings || [],
+            character_book: card.character_book || undefined,
+            extensions: {
+                talkativeness: '0.5',
+                fav: false,
+                world: '',
+                depth_prompt: {
+                    prompt: '',
+                    depth: 4
+                },
+                backyard: card.extensions?.backyard || {
+                    id: card.id
+                }
+            }
+        }
+    };
+
+    console.log('[Bot Browser] Backyard.ai V2 card data:', characterData);
+
+    // Get the avatar image with proxy chain fallback
+    let imageBlob = await fetchImageWithProxyChain(card.avatar_url || card.image_url);
+
+    if (imageBlob) {
+        console.log('[Bot Browser] ✓ Fetched Backyard.ai avatar image');
+    } else {
+        // Use default avatar if image fetch failed
+        console.log('[Bot Browser] Using default avatar for Backyard.ai card');
+        const defaultAvatarResponse = await fetch(default_avatar);
+        imageBlob = await defaultAvatarResponse.blob();
+    }
+
+    // Encode character data as base64 to embed in PNG
+    const jsonString = JSON.stringify(characterData);
+    const base64Data = btoa(unescape(encodeURIComponent(jsonString)));
+
+    // Create PNG with embedded character data
+    const pngBlob = await createCharacterPNG(imageBlob, base64Data);
+    const fileName = card.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png';
+    const file = new File([pngBlob], fileName, { type: 'image/png' });
+
+    // Import the character
+    await processDroppedFiles([file]);
+
+    toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
+    console.log('[Bot Browser] Backyard.ai card imported successfully');
+
+    // Track import
+    return trackImport(extensionName, extension_settings, importStats, card, 'character');
+}
+
+// Import Pygmalion card - fetches full character data from API
+async function importPygmalionCard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+    console.log('[Bot Browser] Importing Pygmalion card');
+
+    // Fetch full character data from API if not already available
+    let fullData = card;
+    if (!card.first_mes && !card.first_message && card.id) {
+        try {
+            console.log('[Bot Browser] Fetching full Pygmalion character data for import:', card.id);
+            const pygmalionData = await getPygmalionCharacter(card.id);
+            fullData = {
+                ...card,
+                ...transformFullPygmalionCharacter(pygmalionData)
+            };
+            console.log('[Bot Browser] Full Pygmalion data fetched:', fullData.name);
+        } catch (error) {
+            console.error('[Bot Browser] Failed to fetch full Pygmalion data:', error);
+            // Continue with partial data
+        }
+    }
+
+    // Convert to Character Card V2 format
+    const characterData = {
+        spec: 'chara_card_v2',
+        spec_version: '2.0',
+        data: {
+            name: fullData.name || '',
+            description: fullData.description || '',
+            personality: fullData.personality || '',
+            scenario: fullData.scenario || '',
+            first_mes: fullData.first_mes || fullData.first_message || '',
+            mes_example: fullData.mes_example || '',
+            creator_notes: fullData.creator_notes || '',
+            system_prompt: fullData.system_prompt || '',
+            post_history_instructions: fullData.post_history_instructions || '',
+            creator: fullData.creator || '',
+            character_version: fullData.character_version || '1.0',
+            tags: fullData.tags || [],
+            alternate_greetings: fullData.alternate_greetings || [],
+            character_book: fullData.character_book || undefined,
+            extensions: {
+                talkativeness: '0.5',
+                fav: false,
+                world: '',
+                depth_prompt: {
+                    prompt: '',
+                    depth: 4
+                },
+                pygmalion: fullData.extensions?.pygmalion || {
+                    id: card.id
+                }
+            }
+        }
+    };
+
+    console.log('[Bot Browser] Pygmalion V2 card data:', characterData);
+
+    // Get the avatar image with proxy chain fallback
+    let imageBlob = await fetchImageWithProxyChain(fullData.avatar_url || card.avatar_url || card.image_url);
+
+    if (imageBlob) {
+        console.log('[Bot Browser] ✓ Fetched Pygmalion avatar image');
+    } else {
+        // Use default avatar if image fetch failed
+        console.log('[Bot Browser] Using default avatar for Pygmalion card');
+        const defaultAvatarResponse = await fetch(default_avatar);
+        imageBlob = await defaultAvatarResponse.blob();
+    }
+
+    // Encode character data as base64 to embed in PNG
+    const jsonString = JSON.stringify(characterData);
+    const base64Data = btoa(unescape(encodeURIComponent(jsonString)));
+
+    // Create PNG with embedded character data
+    const pngBlob = await createCharacterPNG(imageBlob, base64Data);
+    const fileName = card.name.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.png';
+    const file = new File([pngBlob], fileName, { type: 'image/png' });
+
+    // Import the character
+    await processDroppedFiles([file]);
+
+    toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
+    console.log('[Bot Browser] Pygmalion card imported successfully');
 
     // Track import
     return trackImport(extensionName, extension_settings, importStats, card, 'character');
@@ -775,13 +942,22 @@ async function importLiveChubCard(card, extensionName, extension_settings, impor
         console.log('[Bot Browser] Character book entries:', characterData.data.character_book.entries?.length || 0);
     }
 
-    // Get the avatar image
+    // Get the avatar image - add cache-busting to get latest version from CDN
     let imageBlob;
-    const imageUrl = card.avatar_url || card.image_url;
+    let imageUrl = card.avatar_url || card.image_url;
+
+    // Add cache-busting for Chub CDN URLs to avoid stale images
+    if (imageUrl && imageUrl.includes('avatars.charhub.io')) {
+        const nocache = Math.random().toString().substring(2);
+        imageUrl = imageUrl.includes('?') ? `${imageUrl}&nocache=${nocache}` : `${imageUrl}?nocache=${nocache}`;
+        console.log('[Bot Browser] Using cache-busted Chub avatar URL:', imageUrl);
+    }
 
     if (imageUrl) {
         try {
-            const imageResponse = await fetch(imageUrl);
+            const imageResponse = await fetch(imageUrl, {
+                headers: { 'Cache-Control': 'no-cache' }
+            });
             if (imageResponse.ok) {
                 imageBlob = await imageResponse.blob();
                 console.log('[Bot Browser] ✓ Fetched Chub avatar image');

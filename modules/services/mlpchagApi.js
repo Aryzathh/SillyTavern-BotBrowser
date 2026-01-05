@@ -1,6 +1,8 @@
 // MLPChag Live API Service
 // Fetches character data from https://mlpchag.neocities.org/mares.json
 
+import { proxiedFetch } from './corsProxy.js';
+
 const MLPCHAG_API_URL = 'https://mlpchag.neocities.org/mares.json';
 
 // Cache for API data
@@ -40,7 +42,10 @@ export async function loadMlpchagLive() {
     try {
         console.log('[Bot Browser] Fetching MLPChag live data...');
 
-        const response = await fetch(MLPCHAG_API_URL);
+        const response = await proxiedFetch(MLPCHAG_API_URL, {
+            service: 'mlpchag',
+            fetchOptions: { method: 'GET' }
+        });
         if (!response.ok) {
             throw new Error(`MLPChag API error: ${response.status} ${response.statusText}`);
         }
@@ -80,8 +85,9 @@ export function transformMlpchagCard(key, node) {
     const author = parts.length > 1 ? parts[0] : 'Unknown';
     const filename = parts.length > 1 ? parts.slice(1).join('/') : key;
 
-    // Build image URL
-    const imageUrl = `https://mlpchag.neocities.org/cards/${key}`;
+    // Build image URL - encode each path segment to handle special characters (spaces, parentheses, etc.)
+    const encodedKey = parts.map(part => encodeURIComponent(part)).join('/');
+    const imageUrl = `https://mlpchag.neocities.org/cards/${encodedKey}`;
 
     // Parse dates safely
     let createdAt = null;

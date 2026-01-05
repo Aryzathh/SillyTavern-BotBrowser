@@ -2,7 +2,8 @@
 // API: https://api.wyvern.chat/exploreSearch/characters
 // Lorebooks: https://api.wyvern.chat/exploreSearch/lorebooks
 
-const CORS_PROXY = 'https://corsproxy.io/?url=';
+import { proxiedFetch } from './corsProxy.js';
+
 const WYVERN_API_BASE = 'https://api.wyvern.chat/exploreSearch';
 
 // API state for pagination
@@ -104,12 +105,14 @@ export async function searchWyvernCharacters(options = {}) {
         }
 
         const url = `${WYVERN_API_BASE}/characters?${params.toString()}`;
-        const proxyUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
         console.log('[Bot Browser] Wyvern API request:', url);
 
-        const response = await fetch(proxyUrl, {
-            headers: {
-                'Accept': 'application/json'
+        const response = await proxiedFetch(url, {
+            service: 'wyvern',
+            fetchOptions: {
+                headers: {
+                    'Accept': 'application/json'
+                }
             }
         });
         if (!response.ok) {
@@ -179,12 +182,14 @@ export async function searchWyvernLorebooks(options = {}) {
         }
 
         const url = `${WYVERN_API_BASE}/lorebooks?${params.toString()}`;
-        const proxyUrl = `${CORS_PROXY}${encodeURIComponent(url)}`;
         console.log('[Bot Browser] Wyvern Lorebooks API request:', url);
 
-        const response = await fetch(proxyUrl, {
-            headers: {
-                'Accept': 'application/json'
+        const response = await proxiedFetch(url, {
+            service: 'wyvern',
+            fetchOptions: {
+                headers: {
+                    'Accept': 'application/json'
+                }
             }
         });
         if (!response.ok) {
@@ -239,6 +244,7 @@ export async function searchWyvernLorebooks(options = {}) {
 export function transformWyvernCard(node) {
     const creatorName = node.creator?.displayName || node.creator?.vanityUrl || 'Unknown';
     const creatorUrl = node.creator?.vanityUrl || node.creator?._id;
+    const creatorUid = node.creator?.uid || node.creator?._id || null;
 
     // Determine NSFW status from rating
     const isNsfw = node.rating === 'mature' || node.rating === 'explicit';
@@ -276,6 +282,7 @@ export function transformWyvernCard(node) {
         name: node.name || node.chat_name || 'Unknown',
         creator: creatorName,
         creatorUrl: creatorUrl,
+        creatorUid: creatorUid,
         avatar_url: node.avatar,
         image_url: node.avatar,
         background_url: node.backgroundURL || null,
@@ -457,4 +464,59 @@ export async function loadMoreWyvernLorebooks(options = {}) {
     });
 
     return result.results.map(transformWyvernLorebook);
+}
+
+/**
+ * Fetch all characters by a specific creator
+ * @param {Object} options - Options
+ * @param {string} options.uid - Creator's UID
+ * @param {number} options.page - Page number (1-indexed)
+ * @param {number} options.limit - Results per page
+ * @returns {Promise<Object>} Results with cards array
+ */
+export async function fetchWyvernCreatorCards(options = {}) {
+    const {
+        uid,
+        page = 1,
+        limit = 40
+    } = options;
+
+    if (!uid) {
+        throw new Error('Creator UID is required');
+    }
+
+    try {
+        const params = new URLSearchParams();
+        params.set('page', page.toString());
+        params.set('limit', limit.toString());
+
+        const url = `https://api.wyvern.chat/characters/user/${uid}?${params.toString()}`;
+        console.log('[Bot Browser] Wyvern Creator API request:', url);
+
+        const response = await proxiedFetch(url, {
+            service: 'wyvern',
+            fetchOptions: {
+                headers: {
+                    'Accept': 'application/json'
+                }
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Wyvern Creator API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        console.log(`[Bot Browser] Wyvern Creator API returned ${data.characters?.length || 0} characters`);
+
+        return {
+            cards: (data.characters || []).map(transformWyvernCard),
+            total: data.total || 0,
+            hasMore: (data.characters || []).length >= limit
+        };
+    } catch (error) {
+        console.error('[Bot Browser] Wyvern Creator API error:', error);
+        throw error;
+    }
 }

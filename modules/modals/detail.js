@@ -4,6 +4,10 @@ import { buildDetailModalHTML } from '../templates/detailModal.js';
 import { prepareCardDataForModal } from '../data/cardPreparation.js';
 import { getChubCharacter, transformFullChubCharacter, getChubLorebook } from '../services/chubApi.js';
 import { fetchJannyCharacterDetails, transformFullJannyCharacter } from '../services/jannyApi.js';
+import { fetchRisuRealmCharacter, transformFullRisuRealmCharacter } from '../services/risuRealmApi.js';
+import { getBackyardCharacter, transformFullBackyardCharacter } from '../services/backyardApi.js';
+import { getPygmalionCharacter, transformFullPygmalionCharacter } from '../services/pygmalionApi.js';
+import { buildProxyUrl, PROXY_TYPES } from '../services/corsProxy.js';
 import { characters, selectCharacterById } from '../../../../../../script.js';
 
 let isOpeningModal = false;
@@ -48,6 +52,16 @@ export async function showCardDetail(card, extensionName, extension_settings, st
         }
 
         state.selectedCard = fullCard;
+
+        // Log service properties for debugging creator click warnings
+        console.log('[Bot Browser] Detail modal selectedCard set:', {
+            name: fullCard?.name,
+            service: fullCard?.service,
+            sourceService: fullCard?.sourceService,
+            isRisuRealm: fullCard?.isRisuRealm,
+            isJannyAI: fullCard?.isJannyAI,
+            isLiveApi: fullCard?.isLiveApi
+        });
 
         if (save) {
             state.recentlyViewed = addToRecentlyViewed(extensionName, extension_settings, state.recentlyViewed, fullCard);
@@ -125,6 +139,85 @@ async function loadFullCard(card) {
             return fullCard;
         } catch (error) {
             console.error('[Bot Browser] Failed to load full JannyAI character:', error);
+            // Fall through to return original card data
+        }
+    }
+
+    // RisuRealm live API cards
+    const looksLikeRisuRealmCard = (card.service === 'risuai_realm') ||
+        (card.sourceService === 'risuai_realm') ||
+        (card.sourceService === 'risuai_realm_trending');
+
+    if (looksLikeRisuRealmCard && card.id && card.isLiveApi) {
+        try {
+            console.log('[Bot Browser] Fetching full RisuRealm character data for:', card.id);
+            const risuData = await fetchRisuRealmCharacter(card.id);
+            const fullData = transformFullRisuRealmCharacter(risuData);
+            fullCard = { ...card, ...fullData, isRisuRealm: true };
+            console.log('[Bot Browser] Loaded full RisuRealm character data:', fullCard.name);
+            return fullCard;
+        } catch (error) {
+            console.error('[Bot Browser] Failed to load full RisuRealm character:', error);
+            // Fall through to return original card data
+        }
+    }
+
+    // Backyard.ai live API cards
+    const looksLikeBackyardCard = (card.isBackyard) ||
+        (card.service === 'backyard') ||
+        (card.sourceService === 'backyard') ||
+        (card.sourceService === 'backyard_trending');
+
+    if (looksLikeBackyardCard && card.id && card.isLiveApi) {
+        try {
+            console.log('[Bot Browser] Fetching full Backyard.ai character data for:', card.id);
+            const backyardData = await getBackyardCharacter(card.id);
+            const fullData = transformFullBackyardCharacter(backyardData);
+            // Preserve original card data if full data is empty
+            fullCard = {
+                ...card,
+                ...fullData,
+                // Keep original values if full data returned empty
+                name: fullData.name && fullData.name !== 'Unnamed' ? fullData.name : card.name,
+                avatar_url: fullData.avatar_url || card.avatar_url,
+                creator: fullData.creator && fullData.creator !== 'Unknown' ? fullData.creator : card.creator,
+                description: fullData.description || card.description,
+                isBackyard: true
+            };
+            console.log('[Bot Browser] Loaded full Backyard.ai character data:', fullCard.name);
+            return fullCard;
+        } catch (error) {
+            console.error('[Bot Browser] Failed to load full Backyard.ai character:', error);
+            // Fall through to return original card data
+        }
+    }
+
+    // Pygmalion live API cards
+    const looksLikePygmalionCard = (card.isPygmalion) ||
+        (card.service === 'pygmalion') ||
+        (card.sourceService === 'pygmalion') ||
+        (card.sourceService === 'pygmalion_trending');
+
+    if (looksLikePygmalionCard && card.id && card.isLiveApi) {
+        try {
+            console.log('[Bot Browser] Fetching full Pygmalion character data for:', card.id);
+            const pygmalionData = await getPygmalionCharacter(card.id);
+            const fullData = transformFullPygmalionCharacter(pygmalionData);
+            // Preserve original card data if full data is empty
+            fullCard = {
+                ...card,
+                ...fullData,
+                // Keep original values if full data returned empty
+                name: fullData.name && fullData.name !== 'Unnamed' ? fullData.name : card.name,
+                avatar_url: fullData.avatar_url || card.avatar_url,
+                creator: fullData.creator && fullData.creator !== 'Unknown' ? fullData.creator : card.creator,
+                description: fullData.description || card.description,
+                isPygmalion: true
+            };
+            console.log('[Bot Browser] Loaded full Pygmalion character data:', fullCard.name);
+            return fullCard;
+        } catch (error) {
+            console.error('[Bot Browser] Failed to load full Pygmalion character:', error);
             // Fall through to return original card data
         }
     }
@@ -373,6 +466,73 @@ function setupDetailModalEvents(detailModal, detailOverlay, fullCard, state) {
     validateDetailModalImage(detailModal, fullCard);
 }
 
+// Proxy chain for image fallback - uses corsProxy.js utilities
+const IMAGE_PROXY_CHAIN = [
+    PROXY_TYPES.CORSPROXY_IO,
+    PROXY_TYPES.CORS_LOL
+];
+
+async function checkDetailImageExists(url) {
+    try {
+        // Use a proxy to check since direct fetch may fail due to CORS
+        const proxyUrl = buildProxyUrl(PROXY_TYPES.CORSPROXY_IO, url);
+        const response = await fetch(proxyUrl, { method: 'HEAD' });
+        return { exists: response.ok, status: response.status };
+    } catch {
+        // Can't determine, assume it might exist
+        return { exists: true, status: 0 };
+    }
+}
+
+function tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExists = false) {
+    // First check if image exists (404/410 = removed)
+    if (!checkedExists) {
+        checkDetailImageExists(originalUrl).then(({ exists, status }) => {
+            if (!exists && (status === 404 || status === 410 || status === 403)) {
+                const message = status === 403 ? 'Image Restricted' : 'Image Removed';
+                showDetailImageError(imageDiv, message, originalUrl);
+                console.log(`[Bot Browser] Detail image ${status} (removed/restricted):`, originalUrl);
+                return;
+            }
+            // Image exists or we can't tell, try proxies
+            tryDetailImageWithProxy(imageDiv, originalUrl, 0, true);
+        });
+        return;
+    }
+
+    if (proxyIndex >= IMAGE_PROXY_CHAIN.length) {
+        // All proxies failed
+        showDetailImageError(imageDiv, 'CORS/Network Error', originalUrl);
+        return;
+    }
+
+    const proxyType = IMAGE_PROXY_CHAIN[proxyIndex];
+    const proxyUrl = buildProxyUrl(proxyType, originalUrl);
+
+    if (!proxyUrl) {
+        // This proxy type not available, try next
+        tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
+        return;
+    }
+
+    const testImg = new Image();
+
+    testImg.onload = () => {
+        // Proxy worked! Update the image
+        imageDiv.style.backgroundImage = `url('${proxyUrl}')`;
+        imageDiv.setAttribute('data-image-url', proxyUrl);
+        console.log(`[Bot Browser] Detail image loaded via ${proxyType}:`, originalUrl);
+    };
+
+    testImg.onerror = () => {
+        // This proxy failed, try next
+        console.log(`[Bot Browser] Detail image ${proxyType} failed for:`, originalUrl);
+        tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
+    };
+
+    testImg.src = proxyUrl;
+}
+
 function validateDetailModalImage(detailModal, card) {
     const imageDiv = detailModal.querySelector('.bot-browser-detail-image');
     if (!imageDiv) return;
@@ -386,19 +546,18 @@ function validateDetailModalImage(detailModal, card) {
 
     const imageUrl = urlMatch[1];
 
+    // Skip if already proxied
+    if (imageUrl.includes('corsproxy.io') || imageUrl.includes('cors.workers.dev') || imageUrl.startsWith('/proxy/')) {
+        return;
+    }
+
     // Use an actual Image object to test loading instead of fetch (avoids CORS issues)
     const testImg = new Image();
 
     testImg.onerror = () => {
-        // Image actually failed to load, try to get error code
-        fetch(imageUrl, { method: 'HEAD' })
-            .then(response => {
-                const errorCode = response.ok ? 'Unknown Error' : `Error ${response.status}`;
-                showDetailImageError(imageDiv, errorCode, imageUrl);
-            })
-            .catch(() => {
-                showDetailImageError(imageDiv, 'Network Error', imageUrl);
-            });
+        // Image failed to load - try with CORS proxy
+        console.log('[Bot Browser] Detail image failed, trying proxies:', imageUrl);
+        tryDetailImageWithProxy(imageDiv, imageUrl, 0);
     };
 
     testImg.src = imageUrl;
@@ -411,11 +570,22 @@ function showDetailImageError(imageDiv, errorCode, imageUrl) {
     imageDiv.removeAttribute('data-image-url');
     imageDiv.removeAttribute('title');
 
+    // Determine icon and message based on error type
+    let icon = 'fa-image-slash';
+    let message = 'Image Failed to Load';
+
+    if (errorCode === 'Image Removed' || errorCode === '404') {
+        icon = 'fa-trash-can';
+        message = 'Image Removed';
+    } else if (errorCode === 'Image Restricted' || errorCode === '403') {
+        icon = 'fa-ban';
+        message = 'Image Restricted';
+    }
+
     imageDiv.innerHTML = `
         <div class="image-failed-text">
-            <i class="fa-solid fa-image-slash"></i>
-            <span>Image Failed to Load</span>
-            <span class="error-code">${errorCode}</span>
+            <i class="fa-solid ${icon}"></i>
+            <span>${message}</span>
         </div>
     `;
 

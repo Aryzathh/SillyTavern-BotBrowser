@@ -41,7 +41,7 @@ export function createCardHTML(card) {
 export function getOriginalMenuHTML(recentlyViewed) {
     return `
         <div class="bot-browser-header">
-            <h3>Bot Browser <span style="font-size: 0.6em; font-weight: 400; color: rgba(255, 255, 255, 0.6);">v1.1.2</span></h3>
+            <h3>Bot Browser <span style="font-size: 0.6em; font-weight: 400; color: rgba(255, 255, 255, 0.6);">v1.1.3</span></h3>
             <div class="bot-browser-tabs">
                 <button class="bot-browser-tab active" data-tab="bots">Bots</button>
                 <button class="bot-browser-tab" data-tab="lorebooks">Lorebooks</button>
@@ -91,6 +91,14 @@ export function getOriginalMenuHTML(recentlyViewed) {
                     <div class="bot-browser-source-icon" style="background-image: url('https://tse3.mm.bing.net/th/id/OIP.nb-qi0od9W6zRsskVwL6QAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
                     <span>JannyAI</span>
                 </button>
+                <button class="bot-browser-source" data-source="backyard">
+                    <div class="bot-browser-source-icon" style="background-image: url('https://backyard.ai/favicon.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
+                    <span>Backyard.ai</span>
+                </button>
+                <button class="bot-browser-source" data-source="pygmalion">
+                    <div class="bot-browser-source-icon" style="background-image: url('https://files.catbox.moe/sw0crk.png'); background-size: 85%; background-position: center; background-repeat: no-repeat;"></div>
+                    <span>Pygmalion</span>
+                </button>
                 <button class="bot-browser-source" data-source="character_tavern">
                     <div class="bot-browser-source-icon" style="background-image: url('https://character-tavern.com/_app/immutable/assets/logo.DGIlOnDO.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
                     <span>Character Tavern</span>
@@ -103,6 +111,10 @@ export function getOriginalMenuHTML(recentlyViewed) {
                     <div class="bot-browser-source-icon" style="background-image: url('https://derpicdn.net/img/view/2015/9/26/988523__safe_solo_upvotes+galore_smiling_cute_derpy+hooves_looking+at+you_looking+up_part+of+a_set_derpibooru+exclusive.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
                     <span>MLPchag</span>
                 </button>
+                <button class="bot-browser-source" data-source="risuai_realm">
+                    <div class="bot-browser-source-icon" style="background-image: url('https://files.catbox.moe/216rab.webp'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
+                    <span>Risuai Realm</span>
+                </button>
                 <!-- Archive Sources (sorted by size - largest first) -->
                 <button class="bot-browser-source" data-source="catbox">
                     <div class="bot-browser-source-icon" style="background-image: url('https://catbox.tech/favicon128.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
@@ -111,10 +123,6 @@ export function getOriginalMenuHTML(recentlyViewed) {
                 <button class="bot-browser-source" data-source="anchorhold">
                     <div class="bot-browser-source-icon" style="background-image: url('https://assets.coingecko.com/coins/images/30124/large/4CHAN.png?1696529046'); background-size: 85%; background-position: center; background-repeat: no-repeat;"></div>
                     <span>4chan - /aicg/</span>
-                </button>
-                <button class="bot-browser-source" data-source="risuai_realm">
-                    <div class="bot-browser-source-icon" style="background-image: url('https://files.catbox.moe/216rab.webp'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
-                    <span>Risuai Realm</span>
                 </button>
                 <button class="bot-browser-source" data-source="desuarchive">
                     <div class="bot-browser-source-icon" style="background-image: url('https://s2.vndb.org/ch/32/17032.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
@@ -178,10 +186,6 @@ export function getOriginalMenuHTML(recentlyViewed) {
                     <div class="bot-browser-source-icon" style="background-image: url('https://avatars.charhub.io/icons/assets/full_logo.png'); background-size: cover; background-position: center; background-repeat: no-repeat; background-color: white;"></div>
                     <span>Chub</span>
                 </button>
-                <button class="bot-browser-source" data-source="jannyai_trending">
-                    <div class="bot-browser-source-icon" style="background-image: url('https://tse3.mm.bing.net/th/id/OIP.nb-qi0od9W6zRsskVwL6QAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
-                    <span>JanitorAI/JannyAI</span>
-                </button>
                 <button class="bot-browser-source" data-source="character_tavern_trending">
                     <div class="bot-browser-source-icon" style="background-image: url('https://character-tavern.com/_app/immutable/assets/logo.DGIlOnDO.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
                     <span>Character Tavern</span>
@@ -190,12 +194,47 @@ export function getOriginalMenuHTML(recentlyViewed) {
                     <div class="bot-browser-source-icon" style="background-image: url('https://substackcdn.com/image/fetch/w_176,h_176,c_fill,f_webp,q_auto:good,fl_progressive:steep,g_auto/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F6ea09a00-0248-4482-a893-1a2d1e3fe3c1_512x512.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
                     <span>Wyvern Chat</span>
                 </button>
+                <button class="bot-browser-source" data-source="backyard_trending">
+                    <div class="bot-browser-source-icon" style="background-image: url('https://backyard.ai/favicon.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
+                    <span>Backyard.ai</span>
+                </button>
+                <button class="bot-browser-source" data-source="pygmalion_trending">
+                    <div class="bot-browser-source-icon" style="background-image: url('https://files.catbox.moe/sw0crk.png'); background-size: 85%; background-position: center; background-repeat: no-repeat;"></div>
+                    <span>Pygmalion</span>
+                </button>
+                <button class="bot-browser-source" data-source="risuai_realm_trending">
+                    <div class="bot-browser-source-icon" style="background-image: url('https://realm.risuai.net/icon.png'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
+                    <span>RisuRealm</span>
+                </button>
+                <button class="bot-browser-source bot-browser-source-unavailable" data-source="jannyai_trending" title="Trending unavailable - JanitorAI blocks automated access">
+                    <div class="bot-browser-source-icon" style="background-image: url('https://tse3.mm.bing.net/th/id/OIP.nb-qi0od9W6zRsskVwL6QAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
+                    <span>JanitorAI/JannyAI</span>
+                    <div class="bot-browser-source-unavailable-badge">Unavailable</div>
+                </button>
             </div>
         </div>
     `;
 }
 
-export function createBrowserHeader(serviceDisplayName, searchValue, cardCountText, searchCollapsed = false, hideNsfw = false, isLiveChub = false, advancedFilters = null, isJannyAI = false, jannyAdvancedFilters = null, isCharacterTavern = false, ctAdvancedFilters = null, isWyvern = false, wyvernAdvancedFilters = null) {
+export function createBrowserHeader(serviceDisplayName, searchValue, cardCountText, searchCollapsed = false, hideNsfw = false, isLiveChub = false, advancedFilters = null, isJannyAI = false, jannyAdvancedFilters = null, isCharacterTavern = false, ctAdvancedFilters = null, isWyvern = false, wyvernAdvancedFilters = null, isRisuRealm = false) {
+    // Build API limitation warnings
+    let apiWarning = '';
+    if (isJannyAI) {
+        apiWarning = `
+            <div class="bot-browser-api-warning">
+                <i class="fa-solid fa-circle-info"></i>
+                <span>JannyAI API does not provide creator info in search results. Creator filtering may be limited.</span>
+                <button class="bot-browser-dismiss-warning" title="Dismiss"><i class="fa-solid fa-times"></i></button>
+            </div>`;
+    } else if (isRisuRealm) {
+        apiWarning = `
+            <div class="bot-browser-api-warning">
+                <i class="fa-solid fa-circle-info"></i>
+                <span>RisuRealm API provides limited data. Full character details require downloading the card.</span>
+                <button class="bot-browser-dismiss-warning" title="Dismiss"><i class="fa-solid fa-times"></i></button>
+            </div>`;
+    }
+
     return `
         <div class="bot-browser-header-bar">
             <button class="bot-browser-back-button">
@@ -210,6 +249,7 @@ export function createBrowserHeader(serviceDisplayName, searchValue, cardCountTe
                 <i class="fa-solid fa-times"></i>
             </button>
         </div>
+        ${apiWarning}
 
         <div class="bot-browser-card-grid-wrapper">
             <div class="bot-browser-search-section${searchCollapsed ? ' collapsed' : ''}" id="bot-browser-search-section">
