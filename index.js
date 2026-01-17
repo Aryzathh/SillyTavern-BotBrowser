@@ -34,7 +34,7 @@ import {
 import { initUpdateChecker } from './modules/services/updateChecker.js';
 import { searchRisuRealm, transformRisuRealmCard, resetRisuRealmState, risuRealmApiState, fetchRisuRealmTrending } from './modules/services/risuRealmApi.js';
 import { searchChubCards, transformChubCard } from './modules/services/chubApi.js';
-import { fetchWyvernCreatorCards } from './modules/services/wyvernApi.js';
+import { fetchWyvernCreatorCards, searchWyvernCharacters, transformWyvernCard } from './modules/services/wyvernApi.js';
 import { searchCharacterTavern } from './modules/services/characterTavernApi.js';
 
 // Extension version (from manifest.json)
@@ -1681,6 +1681,55 @@ async function playServiceRoulette(menu, preferSameService = null) {
             cards = result.cards.map(card => ({
                 ...transformRisuRealmCard(card),
                 sourceService: 'risuai_realm',
+                isLiveApi: true
+            }));
+        } else if (selectedService === 'pygmalion') {
+            // Pygmalion live API - use random page for variety
+            const randomPage = Math.floor(Math.random() * 20) + 1; // Random page 1-20
+            const result = await searchPygmalionCharacters({
+                query: '',
+                page: randomPage,
+                pageSize: 60,
+                includeSensitive: !extension_settings[extensionName].hideNsfw
+            });
+            cards = result.characters.map(char => ({
+                ...transformPygmalionCard(char),
+                sourceService: 'pygmalion',
+                isLiveApi: true
+            }));
+        } else if (selectedService === 'backyard') {
+            // Backyard live API
+            const result = await searchBackyardCharacters({
+                search: '',
+                sortBy: BACKYARD_SORT_TYPES.POPULAR,
+                type: extension_settings[extensionName].hideNsfw ? 'sfw' : 'all'
+            });
+            cards = result.characters.map(char => ({
+                ...transformBackyardCard(char),
+                sourceService: 'backyard',
+                isLiveApi: true
+            }));
+        } else if (selectedService === 'character_tavern') {
+            // Character Tavern live API - use random page for variety
+            const randomPage = Math.floor(Math.random() * 10) + 1; // Random page 1-10
+            cards = await searchCharacterTavern({
+                query: '',
+                page: randomPage,
+                limit: 30
+            });
+        } else if (selectedService === 'wyvern') {
+            // Wyvern live API - use random page for variety
+            const randomPage = Math.floor(Math.random() * 10) + 1; // Random page 1-10
+            const result = await searchWyvernCharacters({
+                search: '',
+                page: randomPage,
+                limit: 20,
+                sort: 'votes',
+                hideNsfw: extension_settings[extensionName].hideNsfw
+            });
+            cards = (result.characters || []).map(char => ({
+                ...transformWyvernCard(char),
+                sourceService: 'wyvern',
                 isLiveApi: true
             }));
         } else {
