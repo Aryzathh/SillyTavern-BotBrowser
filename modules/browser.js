@@ -51,6 +51,62 @@ function updateCachedFiltersAndDropdowns(state, menuContent) {
     updateFilterDropdowns(menuContent, state.cachedTags, state.cachedCreators, state);
 }
 
+/**
+ * Helper to load more cards until we have enough filtered cards to fill the target count.
+ * This consolidates the duplicated card-loading logic used in initial load, sort change, and pagination.
+ *
+ * @param {Object} options - Configuration options
+ * @param {Object} options.state - Browser state object
+ * @param {string} options.extensionName - Extension name for settings
+ * @param {Object} options.extension_settings - Extension settings object
+ * @param {number} options.targetCount - Target number of filtered cards to reach
+ * @param {Function} options.loadMoreFunc - Function to load more cards from API
+ * @param {Object} options.apiState - API state object with hasMore/isLoading flags
+ * @param {number} [options.maxAttempts=10] - Maximum load attempts to prevent infinite loops
+ * @returns {Promise<{loaded: number, error: Error|null}>} Number of new filtered cards loaded and any error
+ */
+async function loadCardsUntilTarget({ state, extensionName, extension_settings, targetCount, loadMoreFunc, apiState, maxAttempts = 10 }) {
+    let loadAttempts = 0;
+    let totalLoaded = 0;
+    let lastError = null;
+
+    while (state.filteredCards.length < targetCount && apiState.hasMore && !apiState.isLoading && loadAttempts < maxAttempts) {
+        try {
+            loadAttempts++;
+            const newCards = await loadMoreFunc({
+                search: state.filters.search,
+                sort: state.sortBy,
+                hideNsfw: extension_settings[extensionName].hideNsfw,
+                ...(state.advancedFilters || {})
+            });
+
+            if (newCards.length > 0) {
+                // Deduplicate new cards against existing ones
+                const existingIds = new Set(state.currentCards.map(c => c.id).filter(Boolean));
+                const uniqueNewCards = newCards.filter(c => !c.id || !existingIds.has(c.id));
+                state.currentCards.push(...uniqueNewCards);
+
+                // Apply client-side filters and append
+                const filteredNewCards = applyClientSideFilters(uniqueNewCards, state, extensionName, extension_settings);
+                state.filteredCards.push(...filteredNewCards);
+                totalLoaded += filteredNewCards.length;
+
+                // Update cached tags/creators
+                state.cachedTags = getAllTags(state.currentCards);
+                state.cachedCreators = getAllCreators(state.currentCards);
+            } else {
+                break;
+            }
+        } catch (error) {
+            console.error('[Bot Browser] Failed to load more cards:', error);
+            lastError = error;
+            break;
+        }
+    }
+
+    return { loaded: totalLoaded, error: lastError };
+}
+
 // Helper to apply all client-side filters consistently (blocklist, NSFW, image validation)
 // This ensures blocklist is applied whenever cards are loaded from live APIs
 function applyClientSideFilters(cards, state, extensionName, extension_settings) {
@@ -72,7 +128,7 @@ function applyClientSideFilters(cards, state, extensionName, extension_settings)
     return cardsWithImages;
 }
 
-export function createCardBrowser(serviceName, cards, state, extensionName, extension_settings, showCardDetailFunc) {
+export async function createCardBrowser(serviceName, cards, state, extensionName, extension_settings, showCardDetailFunc) {
     state.view = 'browser';
     state.currentService = serviceName;
 
@@ -260,6 +316,25 @@ export function createCardBrowser(serviceName, cards, state, extensionName, exte
     state.filteredCards = cardsWithImages;
     state.currentPage = 1;
     state.totalPages = Math.ceil(cardsWithImages.length / (extension_settings[extensionName].cardsPerPage || 200));
+
+    // For live Chub API: if initial filtered cards are less than cardsPerPage, load more pages
+    // This fixes the issue where filtering removes most cards leaving only 1-5 visible initially
+    const cardsPerPage = extension_settings[extensionName].cardsPerPage || 200;
+    if (state.isLiveChub && state.filteredCards.length < cardsPerPage) {
+        const apiState = state.isLorebooks ? getChubLorebooksApiState() : getChubApiState();
+        const loadMoreFunc = state.isLorebooks ? loadMoreChubLorebooks : loadMoreChubCards;
+
+        await loadCardsUntilTarget({
+            state,
+            extensionName,
+            extension_settings,
+            targetCount: cardsPerPage,
+            loadMoreFunc,
+            apiState
+        });
+
+        state.totalPages = Math.ceil(state.filteredCards.length / cardsPerPage);
+    }
 
     const serviceDisplayName = serviceName === 'all' ? 'All Sources' :
         serviceName === 'anchorhold' ? '4chan - /aicg/' :
@@ -1458,6 +1533,20 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
                         state.filteredCards = sortCards(filteredCards, state.sortBy);
                         state.currentPage = 1; // Reset to page 1 on new sort
 
+                        // Load more cards if we don't have enough to fill the page
+                        const cardsPerPage = extension_settings[extensionName].cardsPerPage || 200;
+                        const apiState = state.isLorebooks ? getChubLorebooksApiState() : getChubApiState();
+                        const loadMoreFunc = state.isLorebooks ? loadMoreChubLorebooks : loadMoreChubCards;
+
+                        await loadCardsUntilTarget({
+                            state,
+                            extensionName,
+                            extension_settings,
+                            targetCount: cardsPerPage,
+                            loadMoreFunc,
+                            apiState
+                        });
+
                         // Update tags/creators dropdowns with new data
                         updateCachedFiltersAndDropdowns(state, menuContent);
 
@@ -1796,53 +1885,34 @@ function setupChubPaginationListeners(gridContainer, state, menuContent, showCar
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } else if (action === 'next') {
                 const nextPageStart = state.currentPage * cardsPerPage;
+                const nextPageEnd = (state.currentPage + 1) * cardsPerPage; // Need enough to FILL the next page
 
                 // Use appropriate state and loader based on whether this is lorebooks or cards
                 const apiState = state.isLorebooks ? getChubLorebooksApiState() : getChubApiState();
                 const loadMoreFunc = state.isLorebooks ? loadMoreChubLorebooks : loadMoreChubCards;
 
-                // Keep loading until we have enough filtered cards for the next page OR API runs out
-                let loadAttempts = 0;
-                const maxLoadAttempts = 10; // Prevent infinite loops
+                // Show loading state
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
 
-                while (nextPageStart >= state.filteredCards.length && apiState.hasMore && !apiState.isLoading && loadAttempts < maxLoadAttempts) {
-                    // Disable button and show loading
-                    btn.disabled = true;
-                    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+                // Load cards until we have enough to fill the next page
+                const { error } = await loadCardsUntilTarget({
+                    state,
+                    extensionName,
+                    extension_settings,
+                    targetCount: nextPageEnd,
+                    loadMoreFunc,
+                    apiState
+                });
 
-                    try {
-                        loadAttempts++;
-                        console.log(`[Bot Browser] Loading more Chub cards (attempt ${loadAttempts}), need ${nextPageStart - state.filteredCards.length + 1} more filtered cards`);
+                // Update dropdowns with new data
+                updateCachedFiltersAndDropdowns(state, menuContent);
 
-                        const newItems = await loadMoreFunc({
-                            search: state.filters.search,
-                            sort: state.sortBy,
-                            hideNsfw: extension_settings[extensionName].hideNsfw,
-                            ...(state.advancedFilters || {})
-                        });
-
-                        if (newItems.length > 0) {
-                            // Deduplicate new items against existing ones
-                            const existingIds = new Set(state.currentCards.map(c => c.id).filter(Boolean));
-                            const uniqueNewItems = newItems.filter(c => !c.id || !existingIds.has(c.id));
-
-                            state.currentCards.push(...uniqueNewItems);
-
-                            // Only filter and append NEW items to preserve existing order
-                            const filteredNewItems = applyClientSideFilters(uniqueNewItems, state, extensionName, extension_settings);
-                            state.filteredCards.push(...filteredNewItems);
-
-                            updateCachedFiltersAndDropdowns(state, menuContent);
-                        } else {
-                            break;
-                        }
-                    } catch (error) {
-                        console.error('[Bot Browser] Failed to load more:', error);
-                        toastr.error('Failed to load more');
-                        btn.disabled = false;
-                        btn.innerHTML = 'Next <i class="fa-solid fa-angle-right"></i>';
-                        return;
-                    }
+                if (error) {
+                    toastr.error('Failed to load more');
+                    btn.disabled = false;
+                    btn.innerHTML = 'Next <i class="fa-solid fa-angle-right"></i>';
+                    return;
                 }
 
                 // Only go to next page if we actually have cards to show
