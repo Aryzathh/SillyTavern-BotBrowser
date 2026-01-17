@@ -52,9 +52,14 @@ export function getOriginalMenuHTML(recentlyViewed) {
                 <button class="bot-browser-tab" data-tab="trending">Trending</button>
                 <button class="bot-browser-tab" data-tab="bookmarks">Bookmarks</button>
             </div>
-            <button class="bot-browser-close" title="Close">
-                <i class="fa-solid fa-times"></i>
-            </button>
+            <div class="bot-browser-header-actions">
+                <button class="bot-browser-header-settings" title="Settings">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+                <button class="bot-browser-close" title="Close">
+                    <i class="fa-solid fa-times"></i>
+                </button>
+            </div>
         </div>
 
         <div class="bot-browser-tab-content active" data-content="bots">

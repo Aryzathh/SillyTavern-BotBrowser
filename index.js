@@ -1575,7 +1575,8 @@ function setupCloseButton(menu) {
 
 // Setup bottom buttons (settings, stats, random)
 function setupBottomButtons(menu) {
-    const settingsButtons = menu.querySelectorAll('.bot-browser-settings');
+    // Settings - both bottom and header buttons
+    const settingsButtons = menu.querySelectorAll('.bot-browser-settings, .bot-browser-header-settings');
     settingsButtons.forEach(settingsButton => {
         settingsButton.addEventListener('click', (e) => {
             e.stopPropagation();
