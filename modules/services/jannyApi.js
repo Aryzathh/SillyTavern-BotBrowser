@@ -1,8 +1,9 @@
-import { proxiedFetch } from './corsProxy.js';
+import { proxiedFetch, getAuthHeadersForService } from './corsProxy.js';
 
 const JANNY_SEARCH_URL = 'https://search.jannyai.com/multi-search';
 const JANNY_FALLBACK_TOKEN = '88a6463b66e04fb07ba87ee3db06af337f492ce511d93df6e2d2968cb2ff2b30';
 const JANNY_IMAGE_BASE = 'https://image.jannyai.com/bot-avatars/';
+const DEBUG = typeof window !== 'undefined' && window.__BOT_BROWSER_DEBUG === true;
 
 // Cached token state
 let cachedToken = null;
@@ -52,7 +53,7 @@ async function getSearchToken() {
                 if (!searchPageMatch) {
                     // Debug: log what scripts we found
                     const allScripts = pageHtml.match(/\/_astro\/[^"'\s]+\.js/g) || [];
-                    console.log('[Bot Browser] Available scripts:', allScripts.slice(0, 10));
+                    if (DEBUG) console.log('[Bot Browser] Available scripts:', allScripts.slice(0, 10));
                     throw new Error('Could not find client-config or SearchPage JS file');
                 }
 
@@ -99,7 +100,7 @@ async function getSearchToken() {
             }
 
             cachedToken = tokenMatch[1];
-            console.log('[Bot Browser] Fetched fresh JannyAI search token');
+            if (DEBUG) console.log('[Bot Browser] Fetched fresh JannyAI search token');
             return cachedToken;
         } catch (error) {
             console.warn('[Bot Browser] Failed to fetch JannyAI token, using fallback:', error.message);
@@ -177,20 +178,40 @@ export async function searchJannyCharacters(options = {}) {
         }]
     };
 
-    console.log('[Bot Browser] JannyAI search request:', requestBody);
+    if (DEBUG) console.log('[Bot Browser] JannyAI search request:', requestBody);
 
-    const response = await fetch(JANNY_SEARCH_URL, {
-        method: 'POST',
-        headers: {
-            'Accept': '*/*',
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${await getSearchToken()}`,
-            'Origin': 'https://jannyai.com',
-            'Referer': 'https://jannyai.com/',
-            'x-meilisearch-client': 'Meilisearch instant-meilisearch (v0.19.0) ; Meilisearch JavaScript (v0.41.0)'
-        },
-        body: JSON.stringify(requestBody)
-    });
+    const baseHeaders = {
+        'Accept': '*/*',
+        'Content-Type': 'application/json',
+        // JannyAI MeiliSearch requires its public search key.
+        // Keep this as the final authority even if the user configured headers for jannyai.
+        'Authorization': `Bearer ${await getSearchToken()}`,
+        'Origin': 'https://jannyai.com',
+        'Referer': 'https://jannyai.com/',
+        'x-meilisearch-client': 'Meilisearch instant-meilisearch (v0.19.0) ; Meilisearch JavaScript (v0.41.0)'
+    };
+
+    const userHeaders = getAuthHeadersForService('jannyai');
+    const headers = { ...userHeaders, ...baseHeaders };
+
+    let response;
+    try {
+        response = await fetch(JANNY_SEARCH_URL, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(requestBody)
+        });
+    } catch (e) {
+        // Some environments block direct cross-site fetches; fall back to proxy chain.
+        response = await proxiedFetch(JANNY_SEARCH_URL, {
+            service: 'jannyai',
+            fetchOptions: {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestBody)
+            }
+        });
+    }
 
     if (!response.ok) {
         const errorText = await response.text().catch(() => '');
@@ -198,7 +219,7 @@ export async function searchJannyCharacters(options = {}) {
     }
 
     const data = await response.json();
-    console.log('[Bot Browser] JannyAI search response:', data);
+    if (DEBUG) console.log('[Bot Browser] JannyAI search response:', data);
     return data;
 }
 
@@ -211,7 +232,7 @@ export async function searchJannyCharacters(options = {}) {
 export async function fetchJannyCharacterDetails(characterId, slug) {
     const characterUrl = `https://jannyai.com/characters/${characterId}_${slug}`;
 
-    console.log('[Bot Browser] Fetching JannyAI character:', characterUrl);
+    if (DEBUG) console.log('[Bot Browser] Fetching JannyAI character:', characterUrl);
 
     const response = await proxiedFetch(characterUrl, {
         service: 'jannyai',

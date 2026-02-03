@@ -141,10 +141,14 @@ export async function fetchChubTrending(options = {}) {
     const url = `${CHUB_GATEWAY_BASE}/search?${params}`;
     console.log('[Bot Browser] Fetching Chub trending:', url);
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Accept': 'application/json'
+    const response = await proxiedFetch(url, {
+        service: 'chub_trending',
+        fetchOptions: {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
         }
     });
 

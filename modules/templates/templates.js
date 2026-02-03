@@ -16,6 +16,7 @@ export function createCardHTML(card) {
     const cardName = escapeHTML(card.name);
     const cardCreator = card.creator ? escapeHTML(card.creator) : '';
     const isNsfw = card.possibleNsfw ? 'true' : 'false';
+    const imageClass = safeImageUrl ? 'has-image' : 'image-load-failed';
 
     return `
         <div class="bot-browser-card-thumbnail" data-card-id="${card.id}" data-nsfw="${isNsfw}">
@@ -23,8 +24,18 @@ export function createCardHTML(card) {
                 <i class="fa-solid fa-check"></i>
             </div>
             ${card.is_own ? '<div class="bot-browser-own-badge" title="Your character"><i class="fa-solid fa-user"></i></div>' : ''}
-            <div class="bot-browser-card-image" style="background-image: url('${safeImageUrl}');">
-                ${!safeImageUrl ? '<i class="fa-solid fa-user"></i>' : ''}
+            <div class="bot-browser-card-image ${imageClass}">
+                ${safeImageUrl ? `
+                    <img
+                        src="${safeImageUrl}"
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        referrerpolicy="no-referrer"
+                        onerror="this.style.display='none'; this.closest('.bot-browser-card-image')?.classList.add('image-load-failed');"
+                    >
+                ` : ''}
+                <i class="fa-solid fa-user"></i>
             </div>
             <div class="bot-browser-card-info">
                 <div class="bot-browser-card-name">${cardName}</div>
@@ -44,7 +55,7 @@ export function createCardHTML(card) {
 export function getOriginalMenuHTML(recentlyViewed) {
     return `
         <div class="bot-browser-header">
-            <h3>Bot Browser <span style="font-size: 0.6em; font-weight: 400; color: rgba(255, 255, 255, 0.6);">v1.1.4</span></h3>
+            <h3>Bot Browser <span style="font-size: 0.6em; font-weight: 400; color: rgba(255, 255, 255, 0.6);">v1.1.5</span></h3>
             <div class="bot-browser-tabs">
                 <button class="bot-browser-tab active" data-tab="bots">Bots</button>
                 <button class="bot-browser-tab" data-tab="lorebooks">Lorebooks</button>
@@ -53,6 +64,9 @@ export function getOriginalMenuHTML(recentlyViewed) {
                 <button class="bot-browser-tab" data-tab="bookmarks">Bookmarks</button>
             </div>
             <div class="bot-browser-header-actions">
+                <button class="bot-browser-open-standalone" title="Open in New Tab">
+                    <i class="fa-solid fa-up-right-from-square"></i>
+                </button>
                 <button class="bot-browser-header-settings" title="Settings">
                     <i class="fa-solid fa-gear"></i>
                 </button>
@@ -69,7 +83,19 @@ export function getOriginalMenuHTML(recentlyViewed) {
                 <div class="bot-browser-recently-viewed-grid">
                     ${recentlyViewed.map(card => `
                         <div class="bot-browser-recent-card" data-card-id="${card.id}" data-nsfw="${card.possibleNsfw ? 'true' : 'false'}">
-                            <div class="bot-browser-recent-image" style="background-image: url('${sanitizeImageUrl(card.avatar_url || '')}');"></div>
+                            <div class="bot-browser-recent-image ${sanitizeImageUrl(card.avatar_url || '') ? 'has-image' : 'image-load-failed'}">
+                                ${sanitizeImageUrl(card.avatar_url || '') ? `
+                                    <img
+                                        src="${sanitizeImageUrl(card.avatar_url || '')}"
+                                        alt=""
+                                        loading="lazy"
+                                        decoding="async"
+                                        referrerpolicy="no-referrer"
+                                        onerror="this.style.display='none'; this.closest('.bot-browser-recent-image')?.classList.add('image-load-failed');"
+                                    >
+                                ` : ''}
+                                <i class="fa-solid fa-user"></i>
+                            </div>
                             <div class="bot-browser-recent-name">${escapeHTML(card.name)}</div>
                         </div>
                     `).join('')}
@@ -554,7 +580,7 @@ export function createCollectionCardHTML(collection) {
         <div class="bot-browser-collection-card" data-collection-id="${collection.id}" data-collection-slug="${collection.slug}">
             <div class="bot-browser-collection-previews">
                 ${previewImages.slice(0, 5).map(img => `
-                    <img class="bot-browser-collection-preview-img" src="${sanitizeImageUrl(img)}" alt="preview" loading="lazy">
+                    <img class="bot-browser-collection-preview-img" src="${sanitizeImageUrl(img)}" alt="preview" loading="lazy" decoding="async" referrerpolicy="no-referrer">
                 `).join('')}
                 ${previewImages.length === 0 ? '<i class="fa-solid fa-folder-open"></i>' : ''}
             </div>

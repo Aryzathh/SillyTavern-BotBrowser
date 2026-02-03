@@ -1,4 +1,4 @@
-import { extension_settings } from '../../../../../extensions.js';
+import { extension_settings } from '/scripts/extensions.js';
 
 const QUILLGEN_API_URL = 'https://quillgen.app/v1/public/api/browse';
 

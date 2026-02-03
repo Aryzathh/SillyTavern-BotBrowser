@@ -1,4 +1,7 @@
-import { default_avatar } from '../../../../../../script.js';
+// Dynamic import for SillyTavern compatibility - fails gracefully in standalone
+let default_avatar = '';
+try { default_avatar = (await import('/script.js')).default_avatar; } catch {}
+
 import { loadQuillgenIndex } from './quillgenApi.js';
 import { searchCharacterTavern, characterTavernApiState, resetCharacterTavernState } from './characterTavernApi.js';
 import { loadMlpchagLive, clearMlpchagCache, getMlpchagApiState, resetMlpchagState } from './mlpchagApi.js';
@@ -9,7 +12,7 @@ import {
     getWyvernApiState, getWyvernLorebooksApiState
 } from './wyvernApi.js';
 
-const baseUrl = 'https://raw.githubusercontent.com/mia13165/updated_cards/refs/heads/main';
+const baseUrl = 'https://raw.githubusercontent.com/mia13165/updated_cards/main';
 
 // Storage for loaded data
 const loadedData = {

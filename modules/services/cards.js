@@ -1,4 +1,4 @@
-import { buildProxyUrl, PROXY_TYPES } from './corsProxy.js';
+import { buildProxyUrl, PROXY_TYPES, proxiedFetch } from './corsProxy.js';
 
 export function getAllTags(cards) {
     // Use Map to normalize tags (lowercase key -> original display value)
@@ -192,7 +192,8 @@ let imageObserver = null;
 // Proxy chain for image fallback - uses corsProxy.js utilities
 const IMAGE_PROXY_CHAIN = [
     PROXY_TYPES.CORSPROXY_IO,
-    PROXY_TYPES.CORS_LOL
+    PROXY_TYPES.CORS_LOL,
+    PROXY_TYPES.PUTER
 ];
 
 async function checkImageExists(url) {
@@ -205,6 +206,13 @@ async function checkImageExists(url) {
         // Can't determine, assume it might exist
         return { exists: true, status: 0 };
     }
+}
+
+function revokeObjectUrlIfAny(imageDiv) {
+    const objectUrl = imageDiv?.dataset?.objectUrl;
+    if (!objectUrl) return;
+    try { URL.revokeObjectURL(objectUrl); } catch {}
+    delete imageDiv.dataset.objectUrl;
 }
 
 function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExists = false) {
@@ -230,6 +238,28 @@ function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExi
     }
 
     const proxyType = IMAGE_PROXY_CHAIN[proxyIndex];
+    if (proxyType === PROXY_TYPES.PUTER) {
+        proxiedFetch(originalUrl, {
+            proxyChain: [PROXY_TYPES.PUTER],
+            fetchOptions: { method: 'GET' },
+            timeoutMs: 15000,
+        }).then(async (resp) => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const blob = await resp.blob();
+            const type = (blob.type || '').toLowerCase();
+            if (type && !type.startsWith('image/')) throw new Error(`Not an image (${type})`);
+            revokeObjectUrlIfAny(imageDiv);
+            const objectUrl = URL.createObjectURL(blob);
+            imageDiv.dataset.objectUrl = objectUrl;
+            imageDiv.style.backgroundImage = `url('${objectUrl}')`;
+            console.log(`[Bot Browser] Image loaded via ${proxyType}:`, originalUrl);
+        }).catch(() => {
+            console.log(`[Bot Browser] ${proxyType} failed for:`, originalUrl);
+            tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
+        });
+        return;
+    }
+
     const proxyUrl = buildProxyUrl(proxyType, originalUrl);
 
     if (!proxyUrl) {
@@ -316,6 +346,7 @@ export function validateCardImages() {
 
 // Helper function to show image error
 function showImageError(imageDiv, errorCode, imageUrl, silent = false) {
+    revokeObjectUrlIfAny(imageDiv);
     imageDiv.style.backgroundImage = 'none';
     imageDiv.classList.add('image-load-failed');
 

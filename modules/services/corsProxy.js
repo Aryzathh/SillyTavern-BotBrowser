@@ -44,44 +44,93 @@ const PROXY_CONFIGS = {
  * Puter.js is free and works well for most services
  */
 const SERVICE_PROXY_MAP = {
-    // JannyAI - Puter first, then corsproxy.io, then cors.lol
-    jannyai: [PROXY_TYPES.PUTER, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL],
-    jannyai_trending: [PROXY_TYPES.PUTER, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL],
+    // JannyAI (Cloudflare) - try corsproxy.io first to avoid Puter noise when it works
+    jannyai: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    jannyai_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // Character Tavern - corsproxy.io first, then Puter, then cors.lol
-    character_tavern: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER, PROXY_TYPES.CORS_LOL],
-    character_tavern_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER, PROXY_TYPES.CORS_LOL],
+    character_tavern: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    character_tavern_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // Wyvern - corsproxy.io first, then Puter, then cors.lol
-    wyvern: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER, PROXY_TYPES.CORS_LOL],
-    wyvern_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER, PROXY_TYPES.CORS_LOL],
+    wyvern: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    wyvern_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
-    // Chub - direct works (no CORS issues)
-    chub: [PROXY_TYPES.NONE],
-    chub_trending: [PROXY_TYPES.NONE],
+    // Chub - avoid direct attempts to prevent noisy CORS console errors; proxies are required for many endpoints.
+    chub: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    chub_gateway: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    chub_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // RisuRealm - corsproxy.io first, then Puter, then cors.lol
-    risuai_realm: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER, PROXY_TYPES.CORS_LOL],
-    risuai_realm_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER, PROXY_TYPES.CORS_LOL],
+    risuai_realm: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    risuai_realm_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
-    // MLPChag - direct first (neocities has CORS), then corsproxy.io, then cors.lol
-    mlpchag: [PROXY_TYPES.NONE, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL],
+    // MLPChag (neocities) - CORS is allowed; do not proxy by default.
+    mlpchag: [PROXY_TYPES.NONE],
 
     // Backyard.ai - corsproxy.io first, then cors.lol, then Puter
-    backyard: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
-    backyard_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
+    backyard: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    backyard_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
-    // Pygmalion.chat - direct first (has CORS), then corsproxy.io, then cors.lol
-    pygmalion: [PROXY_TYPES.NONE, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL],
-    pygmalion_trending: [PROXY_TYPES.NONE, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL],
+    // Pygmalion.chat - direct fetch often fails CORS; use proxies to avoid preflight errors in console.
+    pygmalion: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    pygmalion_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // Default fallback chain
-    default: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER, PROXY_TYPES.CORS_LOL]
+    default: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER]
 };
 
 const PUTER_CDN_URL = 'https://js.puter.com/v2/';
 let puterLoadPromise = null;
 let puterLoaded = false;
+
+const DEFAULT_TIMEOUT_MS = 15000;
+
+function isDebugEnabled() {
+    return typeof window !== 'undefined' && window.__BOT_BROWSER_DEBUG === true;
+}
+
+function isPuterEnabled() {
+    return typeof window === 'undefined' || window.__BOT_BROWSER_DISABLE_PUTER_PROXY !== true;
+}
+
+function debugLog(...args) {
+    if (isDebugEnabled()) console.log(...args);
+}
+
+function debugWarn(...args) {
+    if (isDebugEnabled()) console.warn(...args);
+}
+
+function headersToObject(headers) {
+    if (!headers) return {};
+    if (headers instanceof Headers) return Object.fromEntries(headers.entries());
+    if (Array.isArray(headers)) return Object.fromEntries(headers);
+    if (typeof headers === 'object') return { ...headers };
+    return {};
+}
+
+function getGlobalAuthHeadersForService(service) {
+    try {
+        if (typeof window === 'undefined') return null;
+        const map = window.__BOT_BROWSER_AUTH_HEADERS;
+        if (!map || typeof map !== 'object') return null;
+        return map[service] || map.default || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Get user-configured auth headers for a service as a plain object.
+ * Intended for modules that perform a direct `fetch()` without `proxiedFetch()`.
+ * @param {string} service
+ * @returns {Record<string,string>}
+ */
+export function getAuthHeadersForService(service) {
+    const headers = getGlobalAuthHeadersForService(service);
+    return headers ? headersToObject(headers) : {};
+}
 
 /**
  * Check if Puter.js is available
@@ -104,6 +153,10 @@ export async function loadPuter() {
         return true;
     }
 
+    if (!isPuterEnabled()) {
+        return false;
+    }
+
     if (puterLoaded === false && puterLoadPromise) {
         return puterLoadPromise;
     }
@@ -118,7 +171,7 @@ export async function loadPuter() {
             const checkReady = () => {
                 if (isPuterAvailable()) {
                     puterLoaded = true;
-                    console.log('[CORS Proxy] Puter.js loaded successfully');
+                    debugLog('[CORS Proxy] Puter.js loaded successfully');
                     resolve(true);
                 } else {
                     setTimeout(checkReady, 50);
@@ -128,7 +181,7 @@ export async function loadPuter() {
         };
 
         script.onerror = () => {
-            console.warn('[CORS Proxy] Failed to load Puter.js from CDN');
+            debugWarn('[CORS Proxy] Failed to load Puter.js from CDN');
             puterLoaded = false;
             resolve(false);
         };
@@ -144,6 +197,9 @@ export async function loadPuter() {
  * @returns {Promise<boolean>}
  */
 async function ensurePuterLoaded() {
+    if (!isPuterEnabled()) {
+        return false;
+    }
     if (isPuterAvailable()) {
         return true;
     }
@@ -157,12 +213,21 @@ async function ensurePuterLoaded() {
  * @param {RequestInit} options - Fetch options
  * @returns {Promise<Response>}
  */
-async function puterFetch(url, options = {}) {
+async function puterFetch(url, options = {}, timeoutMs = 15000) {
     const loaded = await ensurePuterLoaded();
     if (!loaded || !isPuterAvailable()) {
         throw new Error('Puter.js could not be loaded');
     }
-    return window.puter.net.fetch(url, options);
+
+    // Add timeout to prevent hanging forever
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Puter.js fetch timed out')), timeoutMs);
+    });
+
+    return Promise.race([
+        window.puter.net.fetch(url, options),
+        timeoutPromise
+    ]);
 }
 
 /**
@@ -188,6 +253,18 @@ export function getProxyChainForService(service) {
     return SERVICE_PROXY_MAP[service] || SERVICE_PROXY_MAP.default;
 }
 
+function withTimeout(fetchOptions, timeoutMs) {
+    if (!timeoutMs || timeoutMs <= 0) return { fetchOptions, cleanup: () => {} };
+    if (fetchOptions?.signal) return { fetchOptions, cleanup: () => {} };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    return {
+        fetchOptions: { ...fetchOptions, signal: controller.signal },
+        cleanup: () => clearTimeout(timeoutId),
+    };
+}
+
 /**
  * Perform a proxied fetch with automatic fallback
  * @param {string} url - Target URL
@@ -195,43 +272,70 @@ export function getProxyChainForService(service) {
  * @param {string} options.service - Service identifier for proxy selection
  * @param {string[]} options.proxyChain - Override proxy chain (optional)
  * @param {RequestInit} options.fetchOptions - Standard fetch options
+ * @param {number} options.timeoutMs - Timeout in ms per attempt
  * @returns {Promise<Response>}
  */
 export async function proxiedFetch(url, options = {}) {
     const {
         service = 'default',
         proxyChain = null,
-        fetchOptions = {}
+        fetchOptions = {},
+        timeoutMs = DEFAULT_TIMEOUT_MS,
     } = options;
 
     const proxies = proxyChain || getProxyChainForService(service);
     const errors = [];
+
+    const authHeaders = getGlobalAuthHeadersForService(service);
+    const mergedHeaders = {
+        ...(authHeaders ? headersToObject(authHeaders) : {}),
+        ...headersToObject(fetchOptions.headers),
+    };
+    const finalFetchOptions = Object.keys(mergedHeaders).length > 0
+        ? { ...fetchOptions, headers: mergedHeaders }
+        : fetchOptions;
 
     for (const proxyType of proxies) {
         try {
             let response;
 
             if (proxyType === PROXY_TYPES.PUTER) {
-                if (!isPuterAvailable()) {
-                    console.log(`[CORS Proxy] Puter not available, skipping`);
+                if (!isPuterEnabled()) {
                     continue;
                 }
-                console.log(`[CORS Proxy] Trying Puter.js fetch for: ${url}`);
-                response = await puterFetch(url, fetchOptions);
+                const loaded = await ensurePuterLoaded();
+                if (!loaded || !isPuterAvailable()) {
+                    continue;
+                }
+                debugLog(`[CORS Proxy] Trying Puter.js fetch for: ${url}`);
+                response = await puterFetch(url, finalFetchOptions);
             } else {
                 const proxyUrl = buildProxyUrl(proxyType, url);
                 if (!proxyUrl) {
                     continue;
                 }
-                console.log(`[CORS Proxy] Trying ${PROXY_CONFIGS[proxyType].name} for: ${url}`);
-                response = await fetch(proxyUrl, fetchOptions);
+                debugLog(`[CORS Proxy] Trying ${PROXY_CONFIGS[proxyType].name} for: ${url}`);
+                const { fetchOptions: timedOptions, cleanup } = withTimeout(finalFetchOptions, timeoutMs);
+                try {
+                    response = await fetch(proxyUrl, timedOptions);
+                } finally {
+                    cleanup();
+                }
             }
 
             // Check for errors that should trigger fallback
             if (response.status === 429) {
                 const error = new Error(`Rate limited by ${PROXY_CONFIGS[proxyType].name}`);
                 errors.push({ proxy: proxyType, error });
-                console.warn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType].name} returned 429, trying next proxy`);
+                debugWarn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType].name} returned 429, trying next proxy`);
+                continue;
+            }
+
+            if (response.status === 413) {
+                // Some proxies (notably corsproxy.io free tier) reject large responses (>1MB).
+                const error = new Error(`Payload too large from ${PROXY_CONFIGS[proxyType].name} (413)`);
+                errors.push({ proxy: proxyType, error });
+                debugWarn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType].name} returned 413, trying next proxy`);
                 continue;
             }
 
@@ -239,13 +343,20 @@ export async function proxiedFetch(url, options = {}) {
                 // Log response body for debugging
                 try {
                     const text = await response.clone().text();
-                    console.warn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType].name} 403 response body:`, text.substring(0, 500));
+                    debugWarn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType].name} 403 response body:`, text.substring(0, 500));
                 } catch (e) {
-                    console.warn(`[CORS Proxy] Could not read 403 response body`);
+                    debugWarn(`[CORS Proxy] Could not read 403 response body`);
                 }
                 const error = new Error(`Forbidden by ${PROXY_CONFIGS[proxyType].name} (403)`);
                 errors.push({ proxy: proxyType, error });
-                console.warn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType].name} returned 403, trying next proxy`);
+                debugWarn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType].name} returned 403, trying next proxy`);
+                continue;
+            }
+
+            if (proxyType === PROXY_TYPES.PUTER && response.status === 401) {
+                const error = new Error('Unauthorized (Puter)');
+                errors.push({ proxy: proxyType, error });
+                debugWarn('[CORS Proxy] Puter returned 401, trying next proxy');
                 continue;
             }
 
@@ -254,12 +365,27 @@ export async function proxiedFetch(url, options = {}) {
 
         } catch (error) {
             errors.push({ proxy: proxyType, error });
-            console.warn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType]?.name || proxyType} failed:`, error.message);
+            debugWarn(`[CORS Proxy] ${PROXY_CONFIGS[proxyType]?.name || proxyType} failed:`, error.message);
         }
     }
 
     // All proxies failed
-    throw new Error(`All proxies failed`);
+    if (isDebugEnabled() && errors.length > 0) {
+        debugWarn('[CORS Proxy] All proxies failed:', errors.map(e => ({ proxy: e.proxy, message: e.error?.message })));
+    }
+
+    const summary = errors
+        .map(({ proxy, error }) => {
+            const name = PROXY_CONFIGS[proxy]?.name || proxy;
+            const message = (error?.message || 'failed').toString();
+            return `${name}: ${message}`;
+        })
+        .join('; ');
+
+    const finalError = new Error(summary ? `All proxies failed: ${summary}` : 'All proxies failed');
+    finalError.name = 'ProxyChainError';
+    finalError.proxyErrors = errors;
+    throw finalError;
 }
 
 /**
@@ -287,6 +413,7 @@ export async function fetchWithProxy(proxyType, url, fetchOptions = {}) {
  * Call this early during extension init to have it ready when needed
  */
 export function preloadPuter() {
+    if (!isPuterEnabled()) return;
     loadPuter().catch(() => {
         // Silently fail - fallback proxies will be used
     });

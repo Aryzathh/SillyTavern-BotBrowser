@@ -1,12 +1,13 @@
-import { extension_settings } from '../../../extensions.js';
-import { eventSource, event_types, saveSettingsDebounced, processDroppedFiles, getRequestHeaders } from '../../../../script.js';
+import { extension_settings } from '/scripts/extensions.js';
+import { eventSource, event_types, saveSettingsDebounced, getRequestHeaders, getCharacters, selectCharacterById, characters } from '/script.js';
+import { importWorldInfo, updateWorldInfoList } from '/scripts/world-info.js';
 
 // Import modules
 import { loadImportStats, saveImportStats, loadRecentlyViewed, loadPersistentSearch, loadBookmarks, removeBookmark, clearImportedCards } from './modules/storage/storage.js';
 import { getTimeAgo } from './modules/storage/stats.js';
 import { loadServiceIndex, initializeServiceCache, clearQuillgenCache } from './modules/services/cache.js';
 import { getRandomCard } from './modules/services/cards.js';
-import { importCardToSillyTavern } from './modules/services/import.js';
+import { importCardToSillyTavern, importCharacterFile } from './modules/services/import.js';
 import { showCardDetail, closeDetailModal, showImageLightbox } from './modules/modals/detail.js';
 import { createCardBrowser, refreshCardGrid } from './modules/browser.js';
 import { getOriginalMenuHTML, createBottomActions } from './modules/templates/templates.js';
@@ -25,7 +26,7 @@ import {
     searchBackyardCharacters, transformBackyardCard, resetBackyardApiState, backyardApiState, BACKYARD_SORT_TYPES,
     getBackyardUserProfile
 } from './modules/services/backyardApi.js';
-import { preloadPuter } from './modules/services/corsProxy.js';
+import './modules/services/corsProxy.js';
 import {
     searchPygmalionCharacters, browsePygmalionCharacters, getPygmalionCharacter,
     getPygmalionCharactersByOwner, transformPygmalionCard, transformFullPygmalionCharacter,
@@ -38,7 +39,7 @@ import { fetchWyvernCreatorCards, searchWyvernCharacters, transformWyvernCard } 
 import { searchCharacterTavern } from './modules/services/characterTavernApi.js';
 
 // Extension version (from manifest.json)
-const EXTENSION_VERSION = '1.1.4';
+const EXTENSION_VERSION = '1.1.5';
 
 // Extension name and settings
 const extensionName = 'BotBrowser';
@@ -274,9 +275,7 @@ async function showCardDetailWrapper(card, save = true, isRandom = false) {
                 state.selectedCard,
                 extensionName,
                 extension_settings,
-                importStats,
-                getRequestHeaders,
-                processDroppedFiles
+                importStats
             );
         });
     }
@@ -1575,6 +1574,16 @@ function setupCloseButton(menu) {
 
 // Setup bottom buttons (settings, stats, random)
 function setupBottomButtons(menu) {
+    // Open in New Tab button
+    const standaloneButtons = menu.querySelectorAll('.bot-browser-open-standalone');
+    standaloneButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            openStandaloneBrowser();
+        });
+    });
+
     // Settings - both bottom and header buttons
     const settingsButtons = menu.querySelectorAll('.bot-browser-settings, .bot-browser-header-settings');
     settingsButtons.forEach(settingsButton => {
@@ -1768,6 +1777,206 @@ async function getRandomCardFromSameService() {
     } else if (menu) {
         // Fallback to any if no current service
         await playServiceRoulette(menu, null);
+    }
+}
+
+// Open standalone browser in new tab
+async function openStandaloneBrowser() {
+    try {
+        // Get CSRF token for API calls
+        const csrfResponse = await fetch('/csrf-token');
+        let csrfToken = '';
+        if (csrfResponse.ok) {
+            const data = await csrfResponse.json();
+            csrfToken = data.token || '';
+        }
+
+        // Build URL relative to this module so it works even if the extension folder is nested.
+        const url = new URL('browser.html', import.meta.url);
+        if (csrfToken) url.searchParams.set('csrf', csrfToken);
+
+        window.open(url.toString(), '_blank');
+        console.log('[Bot Browser] Opened standalone browser in new tab');
+    } catch (error) {
+        console.error('[Bot Browser] Failed to open standalone browser:', error);
+        toastr.error('Failed to open standalone browser');
+    }
+}
+
+function setupStandaloneImportBridge() {
+    let refreshTimer = null;
+    let worldInfoRefreshTimer = null;
+    const scheduleCharactersRefresh = () => {
+        if (refreshTimer) return;
+        refreshTimer = setTimeout(async () => {
+            refreshTimer = null;
+            try {
+                await getCharacters();
+            } catch (e) {
+                console.warn('[Bot Browser] Failed to refresh character list after import:', e);
+            }
+        }, 300);
+    };
+
+    const scheduleWorldInfoRefresh = () => {
+        if (worldInfoRefreshTimer) return;
+        worldInfoRefreshTimer = setTimeout(async () => {
+            worldInfoRefreshTimer = null;
+            try {
+                await updateWorldInfoList();
+            } catch (e) {
+                console.warn('[Bot Browser] Failed to refresh world info list after import:', e);
+            }
+        }, 300);
+    };
+
+    const openCharacterInSillyTavern = async ({ fileName, name }) => {
+        const avatarFileRaw = String(fileName || '').trim();
+        const displayName = String(name || '').trim();
+
+        const normalizeAvatar = (v) => {
+            const s = String(v || '').trim();
+            if (!s) return '';
+            return s.toLowerCase().endsWith('.png') ? s : `${s}.png`;
+        };
+
+        const desiredAvatar = normalizeAvatar(avatarFileRaw);
+        const desiredName = displayName.toLowerCase().trim();
+
+        try {
+            // Ensure the internal characters array is current before selecting by index.
+            await getCharacters();
+
+            let idx = -1;
+
+            if (desiredAvatar) {
+                idx = characters.findIndex((c) => String(c?.avatar || '').toLowerCase() === desiredAvatar);
+            }
+
+            if (idx < 0 && desiredName) {
+                idx = characters.findIndex((c) => String(c?.name || '').toLowerCase().trim() === desiredName);
+            }
+
+            if (idx < 0) {
+                console.warn('[Bot Browser] Could not find character to open:', { desiredAvatar, displayName });
+                toastr.warning('Could not find that character in your library yet. Try again in a moment.', 'Bot Browser');
+                return;
+            }
+
+            await selectCharacterById(idx, { switchMenu: false });
+        } catch (e) {
+            console.warn('[Bot Browser] Failed to open character from standalone:', e);
+            toastr.error('Failed to open character in SillyTavern', 'Bot Browser');
+        }
+    };
+
+    const handleImportRequest = async ({ kind, file, preservedName }) => {
+        let ok = false;
+        let error = '';
+
+        try {
+            if (!(file instanceof File)) {
+                throw new Error('Invalid file payload');
+            }
+
+            if (kind === 'character') {
+                await importCharacterFile(file, preservedName || null);
+                ok = true;
+                scheduleCharactersRefresh();
+            } else if (kind === 'lorebook') {
+                await importWorldInfo(file);
+                ok = true;
+                scheduleWorldInfoRefresh();
+            } else {
+                throw new Error('Unknown import kind');
+            }
+        } catch (e) {
+            error = e?.message || String(e);
+            console.error('[Bot Browser] Standalone import bridge failed:', e);
+        }
+
+        return { ok, error };
+    };
+
+    window.addEventListener('message', async (event) => {
+        if (event.origin !== window.location.origin) return;
+
+        const msg = event.data;
+        if (!msg) return;
+
+        if (msg.type === 'botbrowser_open_character') {
+            await openCharacterInSillyTavern(msg);
+            return;
+        }
+
+        if (msg.type === 'botbrowser_refresh_characters') {
+            scheduleCharactersRefresh();
+            return;
+        }
+
+        if (msg.type === 'botbrowser_refresh_worldinfo') {
+            scheduleWorldInfoRefresh();
+            return;
+        }
+
+        if (msg.type !== 'botbrowser_import_request') return;
+
+        const requestId = msg.requestId;
+        const kind = msg.kind;
+        const file = msg.file;
+        const preservedName = msg.preservedName;
+
+        const { ok, error } = await handleImportRequest({ kind, file, preservedName });
+
+        try {
+            event.source?.postMessage(
+                { type: 'botbrowser_import_result', requestId, ok, error },
+                event.origin
+            );
+        } catch (e) {
+            console.warn('[Bot Browser] Failed to reply to standalone import bridge:', e);
+        }
+    });
+
+    // Cross-tab fallback: standalone may be opened without an opener relationship.
+    try {
+        const bc = new BroadcastChannel('botbrowser');
+        bc.addEventListener('message', async (event) => {
+            const msg = event?.data;
+            if (!msg) return;
+
+            if (msg.type === 'botbrowser_open_character') {
+                await openCharacterInSillyTavern(msg);
+                return;
+            }
+
+            if (msg.type === 'botbrowser_refresh_characters') {
+                scheduleCharactersRefresh();
+                return;
+            }
+
+            if (msg.type === 'botbrowser_refresh_worldinfo') {
+                scheduleWorldInfoRefresh();
+                return;
+            }
+
+            if (msg.type !== 'botbrowser_import_request') return;
+
+            const requestId = msg.requestId;
+            const kind = msg.kind;
+            const file = msg.file;
+            const preservedName = msg.preservedName;
+
+            const { ok, error } = await handleImportRequest({ kind, file, preservedName });
+
+            try {
+                bc.postMessage({ type: 'botbrowser_import_result', requestId, ok, error });
+            } catch (e) {
+                console.warn('[Bot Browser] Failed to reply to standalone import bridge (BroadcastChannel):', e);
+            }
+        });
+    } catch {
+        // BroadcastChannel not available (older browsers); ignore.
     }
 }
 
@@ -2610,9 +2819,7 @@ window.addEventListener('bot-browser-bulk-import', async (e) => {
                 card,
                 extName,
                 extSettings,
-                importStats,
-                getRequestHeaders,
-                processDroppedFiles
+                importStats
             );
 
             successCount++;
@@ -2650,8 +2857,7 @@ window.addEventListener('bot-browser-bulk-import', async (e) => {
 jQuery(async () => {
     console.log('[Bot Browser] Extension loading...');
 
-    // Preload Puter.js for CORS-free fetching (loads in background)
-    preloadPuter();
+    // CORS proxy support is lazy-loaded by corsProxy.js when needed
 
     loadSettings();
 
@@ -2659,6 +2865,7 @@ jQuery(async () => {
     importStats = loadImportStats();
     state.recentlyViewed = loadRecentlyViewed(extensionName, extension_settings);
 
+    setupStandaloneImportBridge();
     addBotButton();
 
     console.log('[Bot Browser] Extension loaded successfully!');

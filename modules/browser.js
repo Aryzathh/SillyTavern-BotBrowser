@@ -636,10 +636,12 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
 
         // For live Chub, trigger fresh API search
         if (state.isLiveChub) {
-            console.log('[Bot Browser] Triggering Chub API search:', state.filters.search);
+            const chubService = state.isLorebooks ? 'chub_lorebooks' : 'chub';
+            const chubTypeLabel = state.isLorebooks ? 'lorebooks' : 'cards';
+            console.log(`[Bot Browser] Triggering Chub API ${chubTypeLabel} search:`, state.filters.search);
             try {
                 // Reset and reload with new search
-                let cards = await loadServiceIndex('chub', true, {
+                let cards = await loadServiceIndex(chubService, true, {
                     search: state.filters.search,
                     sort: state.sortBy,
                     hideNsfw: extension_settings[extensionName].hideNsfw,
@@ -649,10 +651,13 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 // If API returns no results and we have a search query, fallback to archive
                 if (cards.length === 0 && state.filters.search.trim()) {
                     console.log('[Bot Browser] Chub API returned no results, searching archive...');
-                    const archiveCards = await loadServiceIndex('chub', false);
+                    const archiveCards = await loadServiceIndex(chubService, false);
                     if (archiveCards.length > 0) {
+                        const fuseKeys = state.isLorebooks
+                            ? ['name', 'description', 'creator', 'tags']
+                            : ['name', 'description', 'author', 'tags'];
                         const archiveFuse = new Fuse(archiveCards, {
-                            keys: ['name', 'description', 'author', 'tags'],
+                            keys: fuseKeys,
                             threshold: 0.4,
                             ignoreLocation: true
                         });
@@ -1106,7 +1111,8 @@ function setupAdvancedFilterListeners(menuContent, state, extensionName, extensi
             applyBtn.disabled = true;
             applyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Searching...';
 
-            const cards = await loadServiceIndex('chub', true, {
+            const chubService = state.isLorebooks ? 'chub_lorebooks' : 'chub';
+            const cards = await loadServiceIndex(chubService, true, {
                 search: state.filters.search,
                 sort: state.sortBy,
                 hideNsfw: extension_settings[extensionName].hideNsfw,
@@ -1131,7 +1137,8 @@ function setupAdvancedFilterListeners(menuContent, state, extensionName, extensi
             // Update results count
             const countContainer = menuContent.querySelector('.bot-browser-results-count');
             if (countContainer) {
-                countContainer.textContent = `Browsing Chub API (${filteredCards.length} cards loaded)`;
+                const label = state.isLorebooks ? 'lorebooks' : 'cards';
+                countContainer.textContent = `Browsing Chub API (${filteredCards.length} ${label} loaded)`;
             }
         } catch (error) {
             console.error('[Bot Browser] Chub API advanced filter search failed:', error);
@@ -1581,7 +1588,8 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
                 console.log('[Bot Browser] Triggering Chub API sort:', state.sortBy);
                 (async () => {
                     try {
-                        const cards = await loadServiceIndex('chub', true, {
+                        const chubService = state.isLorebooks ? 'chub_lorebooks' : 'chub';
+                        const cards = await loadServiceIndex(chubService, true, {
                             search: state.filters.search,
                             sort: state.sortBy,
                             hideNsfw: extension_settings[extensionName].hideNsfw,

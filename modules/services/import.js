@@ -1,17 +1,65 @@
 // Import operations for Bot Browser extension
 import { trackImport } from '../storage/stats.js';
 import { closeDetailModal } from '../modals/detail.js';
-import { importWorldInfo } from '../../../../../world-info.js';
-import { default_avatar } from '../../../../../../script.js';
+import { importWorldInfo } from '/scripts/world-info.js';
+import { default_avatar, getCharacters, characters, getRequestHeaders, name1 } from '/script.js';
+import { importTags, tag_import_setting } from '/scripts/tags.js';
 import { loadCardChunk } from '../services/cache.js';
 import { fetchQuillgenCard } from '../services/quillgenApi.js';
-import { buildProxyUrl, PROXY_TYPES } from '../services/corsProxy.js';
+import { buildProxyUrl, PROXY_TYPES, proxiedFetch } from '../services/corsProxy.js';
 import { getPygmalionCharacter, transformFullPygmalionCharacter } from '../services/pygmalionApi.js';
+
+/**
+ * Import a character file directly without tag popup
+ * @param {File} file - The PNG file to import
+ * @param {string} [preservedName] - Optional preserved file name for updating existing character
+ * @returns {Promise<string|null>} The avatar filename if successful
+ */
+export async function importCharacterFile(file, preservedName = null) {
+    const ext = file.name.match(/\.(\w+)$/);
+    if (!ext) return null;
+
+    const format = ext[1].toLowerCase();
+    const formData = new FormData();
+    formData.append('avatar', file);
+    formData.append('file_type', format);
+    formData.append('user_name', name1);
+    if (preservedName) formData.append('preserved_name', preservedName);
+
+    const response = await fetch('/api/characters/import', {
+        method: 'POST',
+        body: formData,
+        headers: getRequestHeaders({ omitContentType: true }),
+        cache: 'no-cache',
+    });
+
+    if (!response.ok) {
+        throw new Error(`Import failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (data.error) {
+        throw new Error(data.error);
+    }
+
+    const avatarFileName = data.file_name;
+
+    // Refresh character list
+    await getCharacters();
+
+    // Auto-import tags without popup (using ALL setting)
+    const importedCharacter = characters.find(c => c.avatar === avatarFileName);
+    if (importedCharacter) {
+        await importTags(importedCharacter, { importSetting: tag_import_setting.ALL });
+    }
+
+    return avatarFileName;
+}
 
 // Proxy chain for image fetching - uses corsProxy.js utilities
 const IMAGE_PROXY_CHAIN = [
     PROXY_TYPES.CORSPROXY_IO,
-    PROXY_TYPES.CORS_LOL
+    PROXY_TYPES.PUTER
 ];
 
 /**
@@ -37,10 +85,19 @@ async function fetchImageWithProxyChain(imageUrl) {
     for (let i = 0; i < IMAGE_PROXY_CHAIN.length; i++) {
         try {
             const proxyType = IMAGE_PROXY_CHAIN[i];
-            const proxyUrl = buildProxyUrl(proxyType, imageUrl);
-            if (!proxyUrl) continue;
+            let response;
+            if (proxyType === PROXY_TYPES.PUTER) {
+                response = await proxiedFetch(imageUrl, {
+                    proxyChain: [PROXY_TYPES.PUTER],
+                    fetchOptions: { method: 'GET' },
+                    timeoutMs: 15000,
+                });
+            } else {
+                const proxyUrl = buildProxyUrl(proxyType, imageUrl);
+                if (!proxyUrl) continue;
+                response = await fetch(proxyUrl);
+            }
 
-            const response = await fetch(proxyUrl);
             if (response.ok) {
                 console.log(`[Bot Browser] Image fetched via ${proxyType}:`, imageUrl);
                 return await response.blob();
@@ -55,7 +112,7 @@ async function fetchImageWithProxyChain(imageUrl) {
 }
 
 // Import card to SillyTavern
-export async function importCardToSillyTavern(card, extensionName, extension_settings, importStats, getRequestHeaders, processDroppedFiles) {
+export async function importCardToSillyTavern(card, extensionName, extension_settings, importStats) {
     console.log('[Bot Browser] Importing card:', card.name);
 
     try {
@@ -70,10 +127,10 @@ export async function importCardToSillyTavern(card, extensionName, extension_set
             if (card.isWyvern || card.sourceService === 'wyvern_lorebooks_live' || card.service === 'wyvern_lorebooks') {
                 importStats = await importWyvernLorebook(card, extensionName, extension_settings, importStats);
             } else {
-                importStats = await importLorebook(card, extensionName, extension_settings, importStats, getRequestHeaders);
+                importStats = await importLorebook(card, extensionName, extension_settings, importStats);
             }
         } else {
-            importStats = await importCharacter(card, extensionName, extension_settings, importStats, processDroppedFiles, getRequestHeaders);
+            importStats = await importCharacter(card, extensionName, extension_settings, importStats);
         }
 
         // Close the detail modal after successful import
@@ -88,7 +145,7 @@ export async function importCardToSillyTavern(card, extensionName, extension_set
             try {
                 console.log('[Bot Browser] Image fetch failed, attempting JSON-only import');
                 toastr.info('Image blocked by CORS. Importing character data without image...', card.name);
-                await importCardAsJSON(card, getRequestHeaders);
+                await importCardAsJSON(card);
                 toastr.success(`${card.name} imported (without image)`, 'Character Imported', { timeOut: 3000 });
 
                 // Track import
@@ -109,7 +166,7 @@ export async function importCardToSillyTavern(card, extensionName, extension_set
 }
 
 // Import lorebook
-async function importLorebook(card, extensionName, extension_settings, importStats, getRequestHeaders) {
+async function importLorebook(card, extensionName, extension_settings, importStats) {
     const request = await fetch('/api/content/importURL', {
         method: 'POST',
         headers: getRequestHeaders(),
@@ -196,7 +253,7 @@ async function importWyvernLorebook(card, extensionName, extension_settings, imp
 }
 
 // Import character
-async function importCharacter(card, extensionName, extension_settings, importStats, processDroppedFiles, getRequestHeaders) {
+async function importCharacter(card, extensionName, extension_settings, importStats) {
     // Handle live Chub cards - always fetch full data from API to avoid stale CDN cache
     if (card.isLiveChub && card.fullPath) {
         console.log('[Bot Browser] Importing live Chub card:', card.fullPath);
@@ -253,7 +310,7 @@ async function importCharacter(card, extensionName, extension_settings, importSt
                 }
 
                 // Always use API data for live Chub cards to avoid stale PNG cache
-                return await importLiveChubCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+                return await importLiveChubCard(card, extensionName, extension_settings, importStats);
             }
         } catch (error) {
             console.warn('[Bot Browser] Failed to fetch full Chub data, falling back to PNG:', error.message);
@@ -263,31 +320,31 @@ async function importCharacter(card, extensionName, extension_settings, importSt
     // Handle JannyAI cards - avatar images don't have embedded character data
     if (card.isJannyAI || card.service === 'jannyai' || card.sourceService === 'jannyai') {
         console.log('[Bot Browser] Importing JannyAI card:', card.name);
-        return await importJannyAICard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+        return await importJannyAICard(card, extensionName, extension_settings, importStats);
     }
 
     // Handle Character Tavern live API cards - full data is in _rawData
     if (card.isCharacterTavern || card.sourceService === 'character_tavern_live') {
         console.log('[Bot Browser] Importing Character Tavern card:', card.name);
-        return await importCharacterTavernCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+        return await importCharacterTavernCard(card, extensionName, extension_settings, importStats);
     }
 
     // Handle Wyvern Chat cards - full data is in _rawData
     if (card.isWyvern || card.sourceService === 'wyvern_live' || card.service === 'wyvern') {
         console.log('[Bot Browser] Importing Wyvern card:', card.name);
-        return await importWyvernCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+        return await importWyvernCard(card, extensionName, extension_settings, importStats);
     }
 
     // Handle Backyard.ai cards - full data is in _rawData
     if (card.isBackyard || card.service === 'backyard' || card.sourceService === 'backyard' || card.sourceService === 'backyard_trending') {
         console.log('[Bot Browser] Importing Backyard.ai card:', card.name);
-        return await importBackyardCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+        return await importBackyardCard(card, extensionName, extension_settings, importStats);
     }
 
     // Handle Pygmalion cards - need to fetch full data from API
     if (card.isPygmalion || card.service === 'pygmalion' || card.sourceService === 'pygmalion' || card.sourceService === 'pygmalion_trending') {
         console.log('[Bot Browser] Importing Pygmalion card:', card.name);
-        return await importPygmalionCard(card, extensionName, extension_settings, importStats, processDroppedFiles);
+        return await importPygmalionCard(card, extensionName, extension_settings, importStats);
     }
 
     // Determine which URL to use based on service
@@ -333,7 +390,7 @@ async function importCharacter(card, extensionName, extension_settings, importSt
         const uuid = uuidMatch[1];
         console.log('[Bot Browser] Extracted UUID:', uuid);
 
-        imageBlob = await importRisuAICard(uuid, card, getRequestHeaders);
+        imageBlob = await importRisuAICard(uuid, card);
     } else if (imageUrl.includes('charhub.io') || imageUrl.includes('characterhub.org') || imageUrl.includes('avatars.charhub.io')) {
         console.log('[Bot Browser] Detected Chub URL, fetching directly');
         console.log('[Bot Browser] Fetching from:', imageUrl);
@@ -369,7 +426,7 @@ async function importCharacter(card, extensionName, extension_settings, importSt
     // If image fetch failed, fall back to creating card from chunk data with default avatar
     if (use404Fallback) {
         toastr.info('Image unavailable, importing from chunk data with default avatar...', '', { timeOut: 3000 });
-        return await importFromChunkData(card, extensionName, extension_settings, importStats, processDroppedFiles, true);
+        return await importFromChunkData(card, extensionName, extension_settings, importStats, true);
     }
 
     // Check if the image is too small (likely stripped of character data)
@@ -378,7 +435,7 @@ async function importCharacter(card, extensionName, extension_settings, importSt
     if (imageBlob.size < MIN_VALID_SIZE) {
         console.log(`[Bot Browser] Image too small (${imageBlob.size} bytes), likely stripped of character data`);
         toastr.info('Image missing character data, importing from chunk data...', '', { timeOut: 3000 });
-        return await importFromChunkData(card, extensionName, extension_settings, importStats, processDroppedFiles, false, imageBlob);
+        return await importFromChunkData(card, extensionName, extension_settings, importStats, false, imageBlob);
     }
 
     // Create a file name
@@ -387,8 +444,8 @@ async function importCharacter(card, extensionName, extension_settings, importSt
     // Create a File object
     const file = new File([imageBlob], fileName, { type: 'image/png' });
 
-    // Import directly using processDroppedFiles
-    await processDroppedFiles([file]);
+    // Import the character file
+    await importCharacterFile(file);
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Card imported successfully');
@@ -398,7 +455,7 @@ async function importCharacter(card, extensionName, extension_settings, importSt
 }
 
 // Import card from chunk data with default avatar (for 404 images) or original image (for stripped PNGs)
-async function importFromChunkData(card, extensionName, extension_settings, importStats, processDroppedFiles, useDefaultAvatar = true, originalImageBlob = null) {
+async function importFromChunkData(card, extensionName, extension_settings, importStats, useDefaultAvatar = true, originalImageBlob = null) {
     console.log('[Bot Browser] Importing from chunk data', useDefaultAvatar ? 'with default avatar' : 'with original image');
 
     // Load full card data from chunk if available
@@ -482,7 +539,7 @@ async function importFromChunkData(card, extensionName, extension_settings, impo
     const file = new File([pngBlob], fileName, { type: 'image/png' });
 
     // Import the character
-    await processDroppedFiles([file]);
+    await importCharacterFile(file);
 
     toastr.success(`${fullCard.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Card imported successfully from chunk data');
@@ -492,7 +549,7 @@ async function importFromChunkData(card, extensionName, extension_settings, impo
 }
 
 // Import JannyAI card - avatar images don't have embedded character data
-async function importJannyAICard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+async function importJannyAICard(card, extensionName, extension_settings, importStats) {
     console.log('[Bot Browser] Importing JannyAI card with embedded data');
 
     // Convert to Character Card V2 format
@@ -551,7 +608,7 @@ async function importJannyAICard(card, extensionName, extension_settings, import
     const file = new File([pngBlob], fileName, { type: 'image/png' });
 
     // Import the character
-    await processDroppedFiles([file]);
+    await importCharacterFile(file);
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] JannyAI card imported successfully');
@@ -561,7 +618,7 @@ async function importJannyAICard(card, extensionName, extension_settings, import
 }
 
 // Import Character Tavern card - uses _rawData from API response
-async function importCharacterTavernCard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+async function importCharacterTavernCard(card, extensionName, extension_settings, importStats) {
     console.log('[Bot Browser] Importing Character Tavern card with embedded data');
 
     const raw = card._rawData || {};
@@ -620,7 +677,7 @@ async function importCharacterTavernCard(card, extensionName, extension_settings
     const file = new File([pngBlob], fileName, { type: 'image/png' });
 
     // Import the character
-    await processDroppedFiles([file]);
+    await importCharacterFile(file);
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Character Tavern card imported successfully');
@@ -630,7 +687,7 @@ async function importCharacterTavernCard(card, extensionName, extension_settings
 }
 
 // Import Wyvern Chat card - uses _rawData from API response
-async function importWyvernCard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+async function importWyvernCard(card, extensionName, extension_settings, importStats) {
     console.log('[Bot Browser] Importing Wyvern card with embedded data');
     console.log('[Bot Browser] Full card object:', card);
     console.log('[Bot Browser] card._rawData:', card._rawData);
@@ -733,7 +790,7 @@ async function importWyvernCard(card, extensionName, extension_settings, importS
     const file = new File([pngBlob], fileName, { type: 'image/png' });
 
     // Import the character
-    await processDroppedFiles([file]);
+    await importCharacterFile(file);
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Wyvern card imported successfully');
@@ -743,7 +800,7 @@ async function importWyvernCard(card, extensionName, extension_settings, importS
 }
 
 // Import Backyard.ai card - uses transformed data from detail modal
-async function importBackyardCard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+async function importBackyardCard(card, extensionName, extension_settings, importStats) {
     console.log('[Bot Browser] Importing Backyard.ai card with embedded data');
 
     // Convert to Character Card V2 format - card already has transformed data
@@ -804,7 +861,7 @@ async function importBackyardCard(card, extensionName, extension_settings, impor
     const file = new File([pngBlob], fileName, { type: 'image/png' });
 
     // Import the character
-    await processDroppedFiles([file]);
+    await importCharacterFile(file);
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Backyard.ai card imported successfully');
@@ -814,7 +871,7 @@ async function importBackyardCard(card, extensionName, extension_settings, impor
 }
 
 // Import Pygmalion card - fetches full character data from API
-async function importPygmalionCard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+async function importPygmalionCard(card, extensionName, extension_settings, importStats) {
     console.log('[Bot Browser] Importing Pygmalion card');
 
     // Fetch full character data from API if not already available
@@ -892,7 +949,7 @@ async function importPygmalionCard(card, extensionName, extension_settings, impo
     const file = new File([pngBlob], fileName, { type: 'image/png' });
 
     // Import the character
-    await processDroppedFiles([file]);
+    await importCharacterFile(file);
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Pygmalion card imported successfully');
@@ -902,7 +959,7 @@ async function importPygmalionCard(card, extensionName, extension_settings, impo
 }
 
 // Import live Chub card with embedded lorebook - creates PNG with embedded character data
-async function importLiveChubCard(card, extensionName, extension_settings, importStats, processDroppedFiles) {
+async function importLiveChubCard(card, extensionName, extension_settings, importStats) {
     console.log('[Bot Browser] Importing live Chub card with embedded data');
 
     // Convert to Character Card V2 format
@@ -984,7 +1041,7 @@ async function importLiveChubCard(card, extensionName, extension_settings, impor
     const file = new File([pngBlob], fileName, { type: 'image/png' });
 
     // Import the character
-    await processDroppedFiles([file]);
+    await importCharacterFile(file);
 
     toastr.success(`${card.name} imported successfully!`, '', { timeOut: 2000 });
     console.log('[Bot Browser] Live Chub card imported successfully with embedded lorebook');
@@ -994,7 +1051,7 @@ async function importLiveChubCard(card, extensionName, extension_settings, impor
 }
 
 // Import card as JSON (fallback when image fetch fails)
-async function importCardAsJSON(card, getRequestHeaders) {
+async function importCardAsJSON(card) {
     // Convert to Character Card V2 format
     const characterData = {
         spec: 'chara_card_v2',
@@ -1057,7 +1114,7 @@ async function importCardAsJSON(card, getRequestHeaders) {
 }
 
 // Import RisuAI card - get JSON data and convert to V2 format with embedding
-async function importRisuAICard(uuid, card, getRequestHeaders) {
+async function importRisuAICard(uuid, card) {
     console.log('[Bot Browser] Importing RisuAI card with UUID:', uuid);
     console.log('[Bot Browser] Card avatar_url:', card.avatar_url);
 

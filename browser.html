@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Browser - SillyTavern</title>
+    <link rel="stylesheet" href="browser-standalone.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar -->
+        <header class="topbar">
+            <div class="logo-area" id="logoArea" title="Go to My Characters">
+                <i class="fa-solid fa-robot accent-icon"></i>
+                <h1>Bot<span>Browser</span></h1>
+                <span class="version-badge">v1.1.5</span>
+            </div>
+
+            <!-- View Tabs -->
+            <div class="view-toggle">
+                <button class="view-toggle-btn active" data-view="browse">
+                    <i class="fa-solid fa-compass"></i> Browse
+                </button>
+                <button class="view-toggle-btn" data-view="bookmarks">
+                    <i class="fa-solid fa-bookmark"></i> Bookmarks
+                </button>
+                <button class="view-toggle-btn" data-view="imports">
+                    <i class="fa-solid fa-download"></i> My Imports
+                </button>
+            </div>
+
+            <!-- Search -->
+            <div class="search-area">
+                <div class="search-box">
+                    <i class="fa-solid fa-search"></i>
+                    <label class="sr-only" for="searchInput">Search</label>
+                    <input type="text" id="searchInput" placeholder="Search characters...">
+                    <button id="clearSearchBtn" class="clear-search-btn hidden" title="Clear search">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="header-actions">
+                <button id="batchImportBtn" class="glass-btn icon-only" title="Batch Import URLs">
+                    <i class="fa-solid fa-file-import"></i>
+                </button>
+                <button id="settingsBtn" class="glass-btn icon-only" title="Settings">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Source Selection Sidebar -->
+        <div class="main-layout">
+            <aside class="sidebar">
+                <div class="sidebar-scroll">
+                <div class="sidebar-section">
+                    <h3><i class="fa-solid fa-star"></i> My Library</h3>
+                    <div class="source-list">
+                        <button class="source-btn active" data-source="my_characters">
+                            <i class="fa-solid fa-user source-icon-fa"></i>
+                            <span>My Characters</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section chub-personal-section">
+                    <h3><i class="fa-solid fa-user-circle"></i> Your Chub</h3>
+                    <div class="source-list">
+                        <button class="source-btn chub-personal-btn" data-source="chub_timeline">
+                            <i class="fa-solid fa-clock-rotate-left source-icon-fa"></i>
+                            <span>Timeline</span>
+                        </button>
+                        <button class="source-btn chub-personal-btn" data-source="chub_favorites">
+                            <i class="fa-solid fa-heart source-icon-fa"></i>
+                            <span>Favorites</span>
+                        </button>
+                    </div>
+                    <div class="chub-token-hint" id="chubTokenHint">
+                        <i class="fa-solid fa-lock"></i>
+                        <span>Add token in <a href="#" id="openSettingsForToken">Settings</a></span>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fa-solid fa-bolt"></i> Live APIs</h3>
+                    <div class="source-list">
+                        <button class="source-btn" data-source="chub">
+                            <img src="https://avatars.charhub.io/icons/assets/full_logo.png" alt="Chub" class="source-icon inverted">
+                            <span>Chub</span>
+                        </button>
+                        <button class="source-btn" data-source="jannyai">
+                            <img src="https://tse3.mm.bing.net/th/id/OIP.nb-qi0od9W6zRsskVwL6QAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3" alt="JannyAI" class="source-icon">
+                            <span>JannyAI</span>
+                        </button>
+                        <button class="source-btn" data-source="backyard">
+                            <img src="https://backyard.ai/favicon.png" alt="Backyard" class="source-icon">
+                            <span>Backyard.ai</span>
+                        </button>
+                        <button class="source-btn" data-source="pygmalion">
+                            <img src="https://files.catbox.moe/sw0crk.png" alt="Pygmalion" class="source-icon">
+                            <span>Pygmalion</span>
+                        </button>
+                        <button class="source-btn" data-source="character_tavern">
+                            <img src="https://character-tavern.com/_app/immutable/assets/logo.DGIlOnDO.png" alt="Character Tavern" class="source-icon">
+                            <span>Character Tavern</span>
+                        </button>
+                        <button class="source-btn" data-source="wyvern">
+                            <img src="https://substackcdn.com/image/fetch/w_176,h_176,c_fill,f_webp,q_auto:good,fl_progressive:steep,g_auto/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F6ea09a00-0248-4482-a893-1a2d1e3fe3c1_512x512.png" alt="Wyvern" class="source-icon">
+                            <span>Wyvern Chat</span>
+                        </button>
+                        <button class="source-btn" data-source="risuai_realm">
+                            <img src="https://files.catbox.moe/216rab.webp" alt="RisuRealm" class="source-icon">
+                            <span>RisuRealm</span>
+                        </button>
+                        <button class="source-btn" data-source="mlpchag">
+                            <img src="https://derpicdn.net/img/view/2015/9/26/988523__safe_solo_upvotes+galore_smiling_cute_derpy+hooves_looking+at+you_looking+up_part+of+a_set_derpibooru+exclusive.png" alt="MLPchag" class="source-icon">
+                            <span>MLPchag</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fa-solid fa-archive"></i> Archives</h3>
+                    <div class="source-list">
+                        <button class="source-btn" data-source="catbox">
+                            <img src="https://catbox.tech/favicon128.png" alt="Catbox" class="source-icon">
+                            <span>Catbox</span>
+                        </button>
+                        <button class="source-btn" data-source="anchorhold">
+                            <img src="https://assets.coingecko.com/coins/images/30124/large/4CHAN.png?1696529046" alt="4chan" class="source-icon">
+                            <span>4chan /aicg/</span>
+                        </button>
+                        <button class="source-btn" data-source="desuarchive">
+                            <img src="https://s2.vndb.org/ch/32/17032.jpg" alt="Desuarchive" class="source-icon">
+                            <span>Desuarchive</span>
+                        </button>
+                        <button class="source-btn" data-source="webring">
+                            <img src="https://files.catbox.moe/6avrsl.png" alt="Webring" class="source-icon">
+                            <span>Webring</span>
+                        </button>
+                        <button class="source-btn" data-source="nyai_me">
+                            <div class="source-icon" style="background-image: url('https://nyai.me/img/necologofavicon-64.png'); background-size: 85%; background-position: center; background-repeat: no-repeat;"></div>
+                            <span>Nyai.me</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fa-solid fa-fire"></i> Trending</h3>
+                    <div class="source-list">
+                        <button class="source-btn" data-source="chub_trending">
+                            <img src="https://avatars.charhub.io/icons/assets/full_logo.png" alt="Chub" class="source-icon inverted">
+                            <span>Chub Trending</span>
+                        </button>
+                        <button class="source-btn" data-source="jannyai_trending">
+                            <img src="https://tse3.mm.bing.net/th/id/OIP.nb-qi0od9W6zRsskVwL6QAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3" alt="JannyAI" class="source-icon">
+                            <span>JannyAI Trending</span>
+                        </button>
+                        <button class="source-btn" data-source="backyard_trending">
+                            <img src="https://backyard.ai/favicon.png" alt="Backyard" class="source-icon">
+                            <span>Backyard Trending</span>
+                        </button>
+                        <button class="source-btn" data-source="wyvern_trending">
+                            <img src="https://substackcdn.com/image/fetch/w_176,h_176,c_fill,f_webp,q_auto:good,fl_progressive:steep,g_auto/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F6ea09a00-0248-4482-a893-1a2d1e3fe3c1_512x512.png" alt="Wyvern" class="source-icon">
+                            <span>Wyvern Trending</span>
+                        </button>
+                        <button class="source-btn" data-source="character_tavern_trending">
+                            <img src="https://character-tavern.com/_app/immutable/assets/logo.DGIlOnDO.png" alt="Character Tavern" class="source-icon">
+                            <span>CT Trending</span>
+                        </button>
+                        <button class="source-btn" data-source="risuai_realm_trending">
+                            <img src="https://files.catbox.moe/216rab.webp" alt="RisuRealm" class="source-icon">
+                            <span>RisuRealm Trending</span>
+                        </button>
+                        <button class="source-btn" data-source="pygmalion_trending">
+                            <img src="https://files.catbox.moe/sw0crk.png" alt="Pygmalion" class="source-icon">
+                            <span>Pygmalion Trending</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fa-solid fa-book"></i> Lorebooks</h3>
+                    <div class="source-list">
+                        <button class="source-btn" data-source="chub_lorebooks">
+                            <img src="https://avatars.charhub.io/icons/assets/full_logo.png" alt="Chub" class="source-icon inverted">
+                            <span>Chub Lorebooks</span>
+                        </button>
+                        <button class="source-btn" data-source="wyvern_lorebooks">
+                            <img src="https://substackcdn.com/image/fetch/w_176,h_176,c_fill,f_webp,q_auto:good,fl_progressive:steep,g_auto/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F6ea09a00-0248-4482-a893-1a2d1e3fe3c1_512x512.png" alt="Wyvern" class="source-icon">
+                            <span>Wyvern Lorebooks</span>
+                        </button>
+                    </div>
+                </div>
+                </div><!-- end sidebar-scroll -->
+
+                <!-- Random Card Button -->
+                <div class="sidebar-action">
+                    <button id="randomCardBtn" class="glass-btn full-width">
+                        <i class="fa-solid fa-shuffle"></i> Random Card
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="content-area">
+                <!-- Filters Bar -->
+                <div class="filters-bar" id="filtersBar">
+                    <div class="filter-group">
+                        <label for="tagFilterBtn">Tags:</label>
+                        <div class="tag-filter-container">
+                            <button id="tagFilterBtn" class="glass-btn filter-btn">
+                                <i class="fa-solid fa-tags"></i>
+                                <span id="tagFilterLabel">All Tags</span>
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </button>
+                            <div id="tagFilterDropdown" class="filter-dropdown advanced-tag-filter hidden">
+                                <label class="sr-only" for="tagSearchInput">Tag search</label>
+                                <input type="text" id="tagSearchInput" placeholder="Type tag name...">
+                                <button id="searchTagBtn" class="glass-btn search-creator-btn">
+                                    <i class="fa-solid fa-search"></i> Search on <span id="tagSearchSourceName">Source</span>
+                                </button>
+                                <div class="filter-divider"></div>
+
+                                <!-- Advanced Tag Filter Sections -->
+                                <div class="tag-filter-sections">
+                                    <div class="tag-section mandatory-section">
+                                        <div class="tag-section-header">
+                                            <i class="fa-solid fa-check-double"></i>
+                                            <span>Must Have (ALL)</span>
+                                            <span class="tag-count" id="mandatoryCount">0</span>
+                                        </div>
+                                        <div class="tag-chips" id="mandatoryTags"></div>
+                                    </div>
+
+                                    <div class="tag-section facultative-section">
+                                        <div class="tag-section-header">
+                                            <i class="fa-solid fa-check"></i>
+                                            <span>Any Of (OR)</span>
+                                            <span class="tag-count" id="facultativeCount">0</span>
+                                        </div>
+                                        <div class="tag-chips" id="facultativeTags"></div>
+                                    </div>
+
+                                    <div class="tag-section excluded-section">
+                                        <div class="tag-section-header">
+                                            <i class="fa-solid fa-ban"></i>
+                                            <span>Exclude</span>
+                                            <span class="tag-count" id="excludedCount">0</span>
+                                        </div>
+                                        <div class="tag-chips" id="excludedTags"></div>
+                                    </div>
+                                </div>
+
+                                <div class="filter-divider"></div>
+                                <div class="tag-list-header">Available Tags</div>
+                                <div id="tagList" class="tag-list"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="creatorFilterBtn">Creator:</label>
+                        <div class="creator-filter-container">
+                            <button id="creatorFilterBtn" class="glass-btn filter-btn">
+                                <i class="fa-solid fa-user"></i>
+                                <span id="creatorFilterLabel">All Creators</span>
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </button>
+                            <div id="creatorFilterDropdown" class="filter-dropdown hidden">
+                                <label class="sr-only" for="creatorSearchInput">Creator search</label>
+                                <input type="text" id="creatorSearchInput" placeholder="Type creator name...">
+                                <button id="searchCreatorBtn" class="glass-btn search-creator-btn">
+                                    <i class="fa-solid fa-search"></i> Search on <span id="creatorSearchSourceName">Source</span>
+                                </button>
+                                <div class="filter-divider"></div>
+                                <div id="creatorList" class="creator-list"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="sortSelect">Sort:</label>
+                        <select id="sortSelect" class="glass-select">
+                            <option value="relevance">Relevance</option>
+                            <option value="date_desc">Newest First</option>
+                            <option value="date_asc">Oldest First</option>
+                            <option value="name_asc">Name (A-Z)</option>
+                            <option value="name_desc">Name (Z-A)</option>
+                            <option value="tokens_desc">Most Tokens</option>
+                            <option value="tokens_asc">Least Tokens</option>
+                            <option value="tags_desc">Most Tags</option>
+                            <option value="tags_asc">Least Tags</option>
+                            <option value="downloads_desc">Most Downloads</option>
+                            <option value="stars_desc">Most Stars</option>
+                            <option value="import_desc">Recently Imported</option>
+                            <option value="import_asc">Oldest Import</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="searchFieldSelect">Search in:</label>
+                        <select id="searchFieldSelect" class="glass-select">
+                            <option value="all">All Fields</option>
+                            <option value="name">Name Only</option>
+                            <option value="creator">Creator Only</option>
+                            <option value="tags">Tags Only</option>
+                            <option value="description">Description Only</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group feature-filters">
+                        <button id="favoritesOnlyBtn" class="glass-btn feature-btn" title="Bookmarked only">
+                            <i class="fa-solid fa-bookmark"></i>
+                        </button>
+                        <button id="localFavoritesOnlyBtn" class="glass-btn feature-btn" title="Favorites only (local)">
+                            <i class="fa-solid fa-heart"></i>
+                        </button>
+                        <button id="ownedOnlyBtn" class="glass-btn feature-btn" title="Already owned">
+                            <i class="fa-solid fa-check-circle"></i>
+                        </button>
+                        <button id="lorebookOnlyBtn" class="glass-btn feature-btn" title="Has Lorebook">
+                            <i class="fa-solid fa-book"></i>
+                        </button>
+                        <button id="altGreetingsOnlyBtn" class="glass-btn feature-btn" title="Has Alt Greetings">
+                            <i class="fa-solid fa-comment-dots"></i>
+                        </button>
+                        <button id="bulkSelectBtn" class="glass-btn feature-btn" title="Select multiple cards">
+                            <i class="fa-solid fa-check-square"></i>
+                        </button>
+                        <button id="groupByCreatorBtn" class="glass-btn feature-btn" title="Group by creator">
+                            <i class="fa-solid fa-users"></i>
+                        </button>
+                        <button id="duplicateScannerBtn" class="glass-btn feature-btn" title="Find duplicate characters">
+                            <i class="fa-solid fa-clone"></i>
+                        </button>
+                    </div>
+
+                    <button id="clearFiltersBtn" class="glass-btn clear-btn">
+                        <i class="fa-solid fa-xmark"></i> Clear
+                    </button>
+
+                    <!-- My Imports: type toggle (matches in-app tabs behavior) -->
+                    <div id="importsTypeToggle" class="imports-type-toggle hidden" role="group" aria-label="Import type">
+                        <button type="button" class="glass-btn imports-type-btn active" data-imports-type="characters" title="Show imported characters">
+                            <i class="fa-solid fa-user"></i> Bots
+                        </button>
+                        <button type="button" class="glass-btn imports-type-btn" data-imports-type="lorebooks" title="Show imported lorebooks">
+                            <i class="fa-solid fa-book"></i> Lorebooks
+                        </button>
+                        <button type="button" class="glass-btn imports-type-btn" data-imports-type="all" title="Show all imports">
+                            <i class="fa-solid fa-layer-group"></i> All
+                        </button>
+                    </div>
+
+                    <div class="results-count">
+                        <span id="resultsCount">0 cards</span>
+                    </div>
+                </div>
+
+                <!-- Cards Grid -->
+                <div class="cards-container">
+                    <div id="loadingSpinner" class="loading-spinner">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                        <span>Loading cards...</span>
+                    </div>
+
+                    <div id="welcomeMessage" class="welcome-message">
+                        <i class="fa-solid fa-compass"></i>
+                        <h2>Welcome to Bot Browser</h2>
+                        <p>Select a source from the sidebar to start browsing characters</p>
+                    </div>
+
+                    <div id="cardsGrid" class="cards-grid hidden"></div>
+
+                    <div id="noResults" class="no-results hidden">
+                        <i class="fa-solid fa-search"></i>
+                        <p>No cards found matching your filters</p>
+                    </div>
+
+                    <!-- Bulk Action Bar -->
+                    <div id="bulkActionBar" class="bulk-action-bar hidden">
+                        <div class="bulk-info">
+                            <span id="bulkCount">0</span> selected
+                        </div>
+                        <div class="bulk-actions">
+                            <button id="bulkSelectAllBtn" class="glass-btn bulk-btn" title="Select all visible">
+                                <i class="fa-solid fa-check-double"></i> All
+                            </button>
+                            <button id="bulkDeselectBtn" class="glass-btn bulk-btn" title="Deselect all">
+                                <i class="fa-solid fa-times"></i> Clear
+                            </button>
+                            <button id="bulkBookmarkBtn" class="glass-btn bulk-btn" title="Bookmark selected">
+                                <i class="fa-solid fa-bookmark"></i> Bookmark
+                            </button>
+                            <button id="bulkImportBtn" class="glass-btn bulk-btn primary" title="Import selected">
+                                <i class="fa-solid fa-download"></i> Import All
+                            </button>
+                        </div>
+                        <button id="closeBulkModeBtn" class="bulk-close" title="Exit select mode">
+                            <i class="fa-solid fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <div id="pagination" class="pagination hidden">
+                    <button id="prevPageBtn" class="glass-btn page-btn" disabled>
+                        <i class="fa-solid fa-angle-left"></i> Previous
+                    </button>
+                    <span id="pageInfo" class="page-info">Page 1</span>
+                    <button id="nextPageBtn" class="glass-btn page-btn">
+                        Next <i class="fa-solid fa-angle-right"></i>
+                    </button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Card Detail Modal - Revamped -->
+    <div id="cardModal" class="modal-overlay hidden">
+        <div class="modal-glass card-modal">
+            <!-- Background blur image -->
+            <div class="modal-bg-image" id="modalBgImage"></div>
+            <div class="modal-bg-gradient"></div>
+
+            <!-- Floating close button -->
+            <button class="modal-close-float" id="modalClose">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <!-- Hero section with character info -->
+            <div class="modal-hero">
+                <div class="hero-image-container" id="enlargeImage" title="Click to enlarge">
+                    <img id="modalImage" src="" alt="Character">
+                    <div class="hero-image-glow"></div>
+                </div>
+                <div class="hero-info">
+                    <h1 id="modalName" class="hero-name">Character Name</h1>
+                    <p class="hero-creator">
+                        by <a id="modalCreator" href="#" class="creator-link">Creator</a>
+                    </p>
+                    <div class="hero-stats" id="modalStats"></div>
+                    <div class="hero-actions">
+                        <button id="modalBookmarkBtn" class="hero-btn bookmark-btn" title="Bookmark">
+                            <i class="fa-regular fa-bookmark"></i>
+                        </button>
+                        <a id="modalExternalBtn" href="#" target="_blank" class="hero-btn" title="Open on source">
+                            <i class="fa-solid fa-external-link"></i>
+                        </a>
+                        <button id="modalImportBtn" class="hero-btn primary">
+                            <i class="fa-solid fa-file-import"></i>
+                            <span>Import</span>
+                        </button>
+                        <button id="modalDownloadBtn" class="hero-btn" title="Download card file">
+                            <i class="fa-solid fa-file-arrow-down"></i>
+                            <span>Download</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hidden avatar for compatibility -->
+            <img id="modalAvatar" src="" alt="" style="display:none;">
+
+            <!-- Tags ribbon -->
+            <div class="modal-tags-ribbon">
+                <div class="modal-tags" id="modalTags"></div>
+            </div>
+
+            <!-- Content area -->
+            <div class="modal-content-area">
+                <!-- Tab navigation - scrollable -->
+                <div class="content-tabs-wrapper">
+                    <div class="content-tabs">
+                        <button class="content-tab active" data-tab="overview" title="Overview">
+                            <i class="fa-solid fa-home"></i>
+                            <span>Info</span>
+                        </button>
+                        <button class="content-tab" data-tab="description" title="Description">
+                            <i class="fa-solid fa-scroll"></i>
+                            <span>Desc</span>
+                        </button>
+                        <button class="content-tab" data-tab="personality" title="Personality">
+                            <i class="fa-solid fa-brain"></i>
+                            <span>Pers</span>
+                        </button>
+                        <button class="content-tab" data-tab="scenario" title="Scenario">
+                            <i class="fa-solid fa-theater-masks"></i>
+                            <span>Scene</span>
+                        </button>
+                        <button class="content-tab" data-tab="greeting" title="First Message">
+                            <i class="fa-solid fa-comment-dots"></i>
+                            <span>Greet</span>
+                        </button>
+                        <button class="content-tab" data-tab="altgreetings" title="Alternate Greetings">
+                            <i class="fa-solid fa-layer-group"></i>
+                            <span>Alt</span>
+                        </button>
+                        <button class="content-tab" data-tab="examples" title="Example Messages">
+                            <i class="fa-solid fa-comments"></i>
+                            <span>Examples</span>
+                        </button>
+                        <button class="content-tab" data-tab="system" title="System Prompt">
+                            <i class="fa-solid fa-terminal"></i>
+                            <span>System</span>
+                        </button>
+                        <button class="content-tab" data-tab="notes" title="Creator Notes">
+                            <i class="fa-solid fa-sticky-note"></i>
+                            <span>Notes</span>
+                        </button>
+                        <button class="content-tab" data-tab="entries" title="Lorebook Entries">
+                            <i class="fa-solid fa-book"></i>
+                            <span>Entries</span>
+                        </button>
+                        <button class="content-tab" data-tab="related" title="Related Characters">
+                            <i class="fa-solid fa-users"></i>
+                            <span>Related</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tab contents -->
+                <div class="tab-content active" data-content="overview">
+                    <div class="content-card">
+                        <div id="modalOverview" class="scrolling-text"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="description">
+                    <div class="content-card">
+                        <div class="content-header">
+                            <i class="fa-solid fa-scroll"></i>
+                            <span>Character Description</span>
+                        </div>
+                        <div id="modalDescription" class="scrolling-text"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="personality">
+                    <div class="content-card">
+                        <div class="content-header">
+                            <i class="fa-solid fa-brain"></i>
+                            <span>Personality</span>
+                        </div>
+                        <div id="modalPersonality" class="scrolling-text"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="greeting">
+                    <div class="content-card">
+                        <div class="content-header">
+                            <i class="fa-solid fa-message"></i>
+                            <span>First Message</span>
+                        </div>
+                        <div id="modalFirstMessage" class="scrolling-text first-message"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="altgreetings">
+                    <div class="content-card">
+                        <div id="modalAltGreetings" class="alt-greetings-container"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="scenario">
+                    <div class="content-card">
+                        <div id="modalScenario" class="scrolling-text"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="examples">
+                    <div class="content-card">
+                        <div id="modalExampleMessages" class="scrolling-text"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="system">
+                    <div class="content-card">
+                        <div id="modalSystemPrompt" class="scrolling-text"></div>
+                    </div>
+                </div>
+
+                <div class="tab-content" data-content="notes">
+                    <div class="content-card">
+                        <div id="modalCreatorNotes" class="scrolling-text"></div>
+                    </div>
+                </div>
+
+                <!-- Lorebook Entries Tab -->
+                <div class="tab-content" data-content="entries">
+                    <div class="content-card">
+                        <div id="modalLorebookEntries" class="lorebook-entries-container"></div>
+                    </div>
+                </div>
+
+                <!-- Related Tab -->
+                <div class="tab-content" data-content="related">
+                    <div class="content-card">
+                        <div class="related-tab-notice" id="relatedNotice">
+                            <i class="fa-solid fa-info-circle"></i>
+                            <span>Finding related characters in your local library...</span>
+                        </div>
+                        <div class="related-filters">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="relatedFilterTags" checked>
+                                <span>Shared Tags</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="relatedFilterCreator" checked>
+                                <span>Same Creator</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="relatedFilterContent" checked>
+                                <span>Content Keywords</span>
+                            </label>
+                        </div>
+                        <div class="related-results" id="relatedResults">
+                            <div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Finding related characters...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay hidden">
+        <div class="modal-glass settings-modal">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-gear"></i> Settings</h2>
+                <button class="close-btn" id="settingsClose">&times;</button>
+            </div>
+            <div class="modal-body settings-body">
+                <div class="settings-tabs">
+                    <button class="settings-tab active" data-tab="filtering">
+                        <i class="fa-solid fa-filter"></i> Filtering
+                    </button>
+                    <button class="settings-tab" data-tab="display">
+                        <i class="fa-solid fa-eye"></i> Display
+                    </button>
+                    <button class="settings-tab" data-tab="api">
+                        <i class="fa-solid fa-cloud"></i> APIs
+                    </button>
+                    <button class="settings-tab" data-tab="data">
+                        <i class="fa-solid fa-database"></i> Data
+                    </button>
+                </div>
+
+                <div class="settings-content active" data-content="filtering">
+                    <div class="setting-group">
+                        <label for="settingBlocklist"><i class="fa-solid fa-ban"></i> Tag Blocklist</label>
+                        <textarea id="settingBlocklist" rows="4" placeholder="Enter tags to block, one per line..."></textarea>
+                        <small>Cards with these tags will be hidden</small>
+                    </div>
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="settingHideNsfw">
+                            <span>Hide NSFW Cards</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="settings-content" data-content="display">
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="settingBlurCards">
+                            <span>Blur All Card Images</span>
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="settingBlurNsfw">
+                            <span>Blur NSFW Card Images</span>
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label for="settingCardsPerPage">Cards Per Page: <span id="cardsPerPageValue">50</span></label>
+                        <input type="range" id="settingCardsPerPage" min="25" max="200" step="25" value="50">
+                    </div>
+                </div>
+
+                <div class="settings-content" data-content="api">
+                    <div class="setting-group chub-token-group">
+                        <label for="settingChubToken"><i class="fa-solid fa-key"></i> ChubAI Token</label>
+                        <form id="chubTokenForm" class="token-input-row" autocomplete="off">
+                            <input type="password" id="settingChubToken" name="chubToken" placeholder="Paste your token here..." autocomplete="off">
+                            <button type="button" id="toggleTokenVisibility" class="token-toggle" title="Show/hide token">
+                                <i class="fa-solid fa-eye"></i>
+                            </button>
+                        </form>
+                        <div class="token-status" id="chubTokenStatus"></div>
+                        <details class="token-help">
+                            <summary><i class="fa-solid fa-circle-question"></i> How to get your Chub token</summary>
+                            <div class="token-instructions">
+                                <ol>
+                                    <li>Go to <a href="https://chub.ai" target="_blank">chub.ai</a> and log in</li>
+                                    <li>Open browser DevTools (<kbd>F12</kbd> or <kbd>Ctrl+Shift+I</kbd>)</li>
+                                    <li>Go to <strong>Application</strong> tab → <strong>Local Storage</strong> → <strong>https://chub.ai</strong></li>
+                                    <li>Find <code>URQL_TOKEN</code> and copy its value</li>
+                                    <li>Paste it here</li>
+                                </ol>
+                                <p class="token-warning"><i class="fa-solid fa-triangle-exclamation"></i> Keep your token private. It grants access to your Chub account.</p>
+                            </div>
+                        </details>
+                    </div>
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="settingChubLive" checked>
+                            <span>Use Live Chub API</span>
+                        </label>
+                        <small>Fetch latest cards directly from Chub</small>
+                    </div>
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="settingCTLive">
+                            <span>Use Live Character Tavern API</span>
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="settingWyvernLive" checked>
+                            <span>Use Live Wyvern API</span>
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="settingRisuRealmLive" checked>
+                            <span>Use Live RisuRealm API</span>
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label for="settingAuthHeadersJson"><i class="fa-solid fa-user-lock"></i> Service Auth Headers (JSON)</label>
+                        <textarea id="settingAuthHeadersJson" rows="6" placeholder='{"wyvern":{"Authorization":"Bearer ..."},"backyard":{"Authorization":"Bearer ..."}}'></textarea>
+                        <small>Optional. For services that support bearer tokens to show restricted content. Cookies can’t be set from here.</small>
+                        <details class="token-help">
+                            <summary><i class="fa-solid fa-circle-question"></i> Service keys + examples</summary>
+                            <div class="token-instructions">
+                                <p>Use a top-level key matching the source name. Common keys:</p>
+                                <ul>
+                                    <li><code>wyvern</code>, <code>backyard</code>, <code>jannyai</code>, <code>character_tavern</code>, <code>risuai_realm</code>, <code>pygmalion</code></li>
+                                    <li><code>default</code> (applies when a service-specific key is missing)</li>
+                                </ul>
+                                <p>Example:</p>
+                                <pre><code>{
+  "wyvern": { "Authorization": "Bearer YOUR_TOKEN" },
+  "default": { "X-My-Header": "value" }
+}</code></pre>
+                                <p>Chub: use the dedicated “ChubAI Token” field above (don’t put it here).</p>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                <div class="settings-content" data-content="data">
+                    <div class="setting-group">
+                        <label for="exportBookmarksBtn"><i class="fa-solid fa-bookmark"></i> Bookmarks</label>
+                        <div class="button-row">
+                            <button id="exportBookmarksBtn" class="action-btn">
+                                <i class="fa-solid fa-download"></i> Export
+                            </button>
+                            <button id="importBookmarksBtn" class="action-btn">
+                                <i class="fa-solid fa-upload"></i> Import
+                            </button>
+                        </div>
+                        <small>Export your bookmarks to a JSON file or import from one</small>
+                        <label class="sr-only" for="importBookmarksFile">Import bookmarks file</label>
+                        <input type="file" id="importBookmarksFile" accept=".json" style="display:none">
+                    </div>
+                    <div class="setting-group">
+                        <label for="clearRecentlyViewedBtn"><i class="fa-solid fa-clock-rotate-left"></i> Recently Viewed</label>
+                        <button id="clearRecentlyViewedBtn" class="action-btn danger">
+                            <i class="fa-solid fa-trash"></i> Clear History
+                        </button>
+                        <small>Clear your recently viewed cards history</small>
+                    </div>
+                    <div class="setting-group">
+                        <label for="clearCacheBtn"><i class="fa-solid fa-database"></i> Cache</label>
+                        <button id="clearCacheBtn" class="action-btn danger">
+                            <i class="fa-solid fa-broom"></i> Clear Cache
+                        </button>
+                        <small>Clear cached service index data</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="saveSettingsBtn" class="action-btn primary">
+                    <i class="fa-solid fa-save"></i> Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Import Modal -->
+    <div id="batchImportModal" class="modal-overlay hidden">
+        <div class="modal-glass batch-import-modal">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-file-import"></i> Batch Import</h2>
+                <button class="close-btn" id="batchImportClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="batch-import-info">Paste character URLs (one per line). Supports Chub, Pygmalion, RisuRealm, and catbox PNG links.</p>
+                <label class="sr-only" for="batchImportUrls">Batch import URLs</label>
+                <textarea id="batchImportUrls" placeholder="https://chub.ai/characters/creator/name
+https://realm.risuai.net/character/abc123
+https://files.catbox.moe/xyz.png"></textarea>
+                <div id="batchImportProgress" class="batch-progress hidden">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="batchProgressFill"></div>
+                    </div>
+                    <div class="progress-text" id="batchProgressText">0 / 0</div>
+                </div>
+                <div id="batchImportLog" class="batch-log hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="startBatchImportBtn" class="action-btn primary">
+                    <i class="fa-solid fa-play"></i> Start Import
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Lightbox -->
+    <div id="imageLightbox" class="lightbox-overlay hidden">
+        <button class="lightbox-close" id="lightboxClose">&times;</button>
+        <img id="lightboxImage" src="" alt="Enlarged image">
+    </div>
+
+    <!-- Duplicate Scanner Modal -->
+    <div id="duplicateScannerModal" class="modal-overlay hidden">
+        <div class="modal-glass duplicate-scanner-modal">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-clone"></i> Duplicate Scanner</h2>
+                <button class="close-btn" id="duplicateScannerClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="duplicate-scanner-options">
+                    <div class="scanner-option">
+                        <label for="dupMinScore">Minimum Match Score: <span id="dupScoreValue">35</span>%</label>
+                        <input type="range" id="dupMinScore" min="10" max="90" step="5" value="35">
+                    </div>
+                    <div class="scanner-option">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="dupCheckName" checked>
+                            <span>Name Similarity</span>
+                        </label>
+                    </div>
+                    <div class="scanner-option">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="dupCheckCreator" checked>
+                            <span>Same Creator</span>
+                        </label>
+                    </div>
+                    <div class="scanner-option">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="dupCheckContent" checked>
+                            <span>Content Similarity (Jaccard)</span>
+                        </label>
+                    </div>
+                </div>
+                <button id="startDuplicateScanBtn" class="action-btn primary">
+                    <i class="fa-solid fa-search"></i> Scan for Duplicates
+                </button>
+                <div id="duplicateScanProgress" class="scan-progress hidden">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="dupProgressFill"></div>
+                    </div>
+                    <div class="progress-text" id="dupProgressText">Scanning...</div>
+                </div>
+                <div id="duplicateResults" class="duplicate-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Diff Preview Modal -->
+    <div id="diffPreviewModal" class="modal-overlay hidden">
+        <div class="modal-glass diff-preview-modal">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-code-compare"></i> Review Changes</h2>
+                <button class="close-btn" id="diffPreviewClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="diff-preview-info">The following changes will be saved:</p>
+                <div id="diffPreviewContent" class="diff-content"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="diffCancelBtn" class="action-btn secondary">
+                    <i class="fa-solid fa-times"></i> Cancel
+                </button>
+                <button id="diffConfirmBtn" class="action-btn primary">
+                    <i class="fa-solid fa-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Duplicate Warning Modal -->
+    <div id="importDuplicateModal" class="modal-overlay hidden">
+        <div class="modal-glass import-duplicate-modal">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-exclamation-triangle"></i> Potential Duplicate</h2>
+                <button class="close-btn" id="importDuplicateClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="duplicate-warning-text">This character may already exist in your library:</p>
+                <div class="duplicate-comparison">
+                    <div class="comparison-card importing">
+                        <h4>Importing</h4>
+                        <div id="importingCardPreview"></div>
+                    </div>
+                    <div class="comparison-card existing">
+                        <h4>Existing</h4>
+                        <div id="existingCardPreview"></div>
+                    </div>
+                </div>
+                <div class="match-reasoning" id="matchReasoning"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="skipImportBtn" class="action-btn secondary">
+                    <i class="fa-solid fa-forward"></i> Skip
+                </button>
+                <button id="importAnywayBtn" class="action-btn primary">
+                    <i class="fa-solid fa-download"></i> Import Anyway
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Duplicate Media Scanner Modal -->
+    <div id="duplicateMediaModal" class="modal-overlay hidden">
+        <div class="modal-glass duplicate-media-modal">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-images"></i> Duplicate Media Scanner</h2>
+                <button class="close-btn" id="duplicateMediaClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="media-scan-info">Scan your gallery for duplicate images using SHA-256 file hashing.</p>
+                <div class="media-scan-options">
+                    <button id="startMediaScanBtn" class="action-btn primary">
+                        <i class="fa-solid fa-search"></i> Scan Current Character
+                    </button>
+                    <button id="scanAllMediaBtn" class="action-btn secondary">
+                        <i class="fa-solid fa-layer-group"></i> Scan All Media
+                    </button>
+                </div>
+                <div class="media-scan-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="mediaHashProgress"></div>
+                    </div>
+                    <div class="progress-text" id="mediaHashStatus">Ready to scan</div>
+                </div>
+                <div id="duplicateMediaResults" class="duplicate-media-results">
+                    <div class="scan-prompt">Click a button above to find duplicate media files</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="browser-standalone.js" type="module"></script>
+</body>
+</html>

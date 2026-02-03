@@ -7,9 +7,9 @@ import { fetchJannyCharacterDetails, transformFullJannyCharacter } from '../serv
 import { fetchRisuRealmCharacter, transformFullRisuRealmCharacter } from '../services/risuRealmApi.js';
 import { getBackyardCharacter, transformFullBackyardCharacter } from '../services/backyardApi.js';
 import { getPygmalionCharacter, transformFullPygmalionCharacter } from '../services/pygmalionApi.js';
-import { buildProxyUrl, PROXY_TYPES } from '../services/corsProxy.js';
+import { buildProxyUrl, PROXY_TYPES, proxiedFetch } from '../services/corsProxy.js';
 import { getSourceUrl } from '../utils/utils.js';
-import { characters, selectCharacterById } from '../../../../../../script.js';
+import { characters, selectCharacterById } from '/script.js';
 
 let isOpeningModal = false;
 
@@ -487,8 +487,16 @@ function setupDetailModalEvents(detailModal, detailOverlay, fullCard, state) {
 // Proxy chain for image fallback - uses corsProxy.js utilities
 const IMAGE_PROXY_CHAIN = [
     PROXY_TYPES.CORSPROXY_IO,
-    PROXY_TYPES.CORS_LOL
+    PROXY_TYPES.CORS_LOL,
+    PROXY_TYPES.PUTER
 ];
+
+function revokeDetailObjectUrlIfAny(imageDiv) {
+    const objectUrl = imageDiv?.dataset?.objectUrl;
+    if (!objectUrl) return;
+    try { URL.revokeObjectURL(objectUrl); } catch {}
+    delete imageDiv.dataset.objectUrl;
+}
 
 async function checkDetailImageExists(url) {
     try {
@@ -525,6 +533,29 @@ function tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedE
     }
 
     const proxyType = IMAGE_PROXY_CHAIN[proxyIndex];
+    if (proxyType === PROXY_TYPES.PUTER) {
+        proxiedFetch(originalUrl, {
+            proxyChain: [PROXY_TYPES.PUTER],
+            fetchOptions: { method: 'GET' },
+            timeoutMs: 15000,
+        }).then(async (resp) => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const blob = await resp.blob();
+            const type = (blob.type || '').toLowerCase();
+            if (type && !type.startsWith('image/')) throw new Error(`Not an image (${type})`);
+            revokeDetailObjectUrlIfAny(imageDiv);
+            const objectUrl = URL.createObjectURL(blob);
+            imageDiv.dataset.objectUrl = objectUrl;
+            imageDiv.style.backgroundImage = `url('${objectUrl}')`;
+            imageDiv.setAttribute('data-image-url', objectUrl);
+            console.log(`[Bot Browser] Detail image loaded via ${proxyType}:`, originalUrl);
+        }).catch(() => {
+            console.log(`[Bot Browser] Detail image ${proxyType} failed for:`, originalUrl);
+            tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
+        });
+        return;
+    }
+
     const proxyUrl = buildProxyUrl(proxyType, originalUrl);
 
     if (!proxyUrl) {
@@ -582,6 +613,7 @@ function validateDetailModalImage(detailModal, card) {
 }
 
 function showDetailImageError(imageDiv, errorCode, imageUrl) {
+    revokeDetailObjectUrlIfAny(imageDiv);
     imageDiv.style.backgroundImage = 'none';
     imageDiv.classList.add('image-load-failed');
     imageDiv.classList.remove('clickable-image');

@@ -1,9 +1,8 @@
 // MLPChag Live API Service
 // Fetches character data from https://mlpchag.neocities.org/mares.json
 
-import { proxiedFetch } from './corsProxy.js';
-
 const MLPCHAG_API_URL = 'https://mlpchag.neocities.org/mares.json';
+const DEFAULT_TIMEOUT_MS = 20000;
 
 // Cache for API data
 let cachedData = null;
@@ -16,6 +15,16 @@ export const mlpchagApiState = {
     lastLoad: null,
     totalCards: 0
 };
+
+async function fetchWithTimeout(url, fetchOptions = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...fetchOptions, signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
 
 /**
  * Load all MLPChag cards from live API
@@ -42,10 +51,9 @@ export async function loadMlpchagLive() {
     try {
         console.log('[Bot Browser] Fetching MLPChag live data...');
 
-        const response = await proxiedFetch(MLPCHAG_API_URL, {
-            service: 'mlpchag',
-            fetchOptions: { method: 'GET' }
-        });
+        // Important: do not send custom headers here. Any non-simple header will trigger a CORS
+        // preflight, and Neocities does not consistently allow OPTIONS.
+        const response = await fetchWithTimeout(MLPCHAG_API_URL, { method: 'GET' });
         if (!response.ok) {
             throw new Error(`MLPChag API error: ${response.status} ${response.statusText}`);
         }
