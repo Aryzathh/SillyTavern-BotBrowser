@@ -1,10 +1,13 @@
 import { logger } from '../utils/logger.js';
-// --- IndexedDB Wrapper & In-Memory Cache System ---
-const DB_NAME = 'BotBrowserDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'keyval';
+import '../../lib/localforage.min.js';
 
-let idbPromise = null;
+// --- IndexedDB Wrapper & In-Memory Cache System using localForage ---
+localforage.config({
+    name: 'BotBrowserDB',
+    storeName: 'keyval',
+    description: 'SillyTavern BotBrowser Cache and Key/Value Store'
+});
+
 let memoryCache = {
     persistentSearches: {},
     searchCollapsed: false,
@@ -15,52 +18,36 @@ let memoryCache = {
 };
 let isStorageInitialized = false;
 
-function getIDB() {
-    if (!idbPromise) {
-        idbPromise = new Promise((resolve, reject) => {
-            const req = indexedDB.open(DB_NAME, DB_VERSION);
-            req.onerror = e => reject('IndexedDB error: ' + e.target.error);
-            req.onsuccess = e => resolve(e.target.result);
-            req.onupgradeneeded = e => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains(STORE_NAME)) {
-                    db.createObjectStore(STORE_NAME);
-                }
-            };
-        });
-    }
-    return idbPromise;
-}
-
 export async function idbSet(key, val) {
     try {
-        const db = await getIDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readwrite');
-            const store = tx.objectStore(STORE_NAME);
-            const req = store.put(val, key);
-            req.onsuccess = () => resolve();
-            req.onerror = () => reject(req.error);
-        });
+        await localforage.setItem(key, val);
     } catch (e) {
-        logger.warn('IndexedDB write failed, falling back to localStorage', e);
+        logger.warn('localForage write failed, falling back to localStorage', e);
         try { localStorage.setItem(key, JSON.stringify(val)); } catch (e2) { }
     }
 }
 
 export async function idbGet(key) {
     try {
-        const db = await getIDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_NAME, 'readonly');
-            const store = tx.objectStore(STORE_NAME);
-            const req = store.get(key);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        });
+        const value = await localforage.getItem(key);
+        return value;
     } catch (e) {
+        logger.warn('localForage read failed for key:', key, e);
         return null;
     }
+}
+
+// Yüksek hacimli API sorgu sonuçlarını TTL (Süre) bazlı cache'lemek için:
+export async function idbGetCachedApi(key, ttlMs = 3600000) { // Default 1 Hour
+    const data = await idbGet(key);
+    if (data && data.timestamp && (Date.now() - data.timestamp < ttlMs)) {
+        return data.payload;
+    }
+    return null;
+}
+
+export async function idbSetCachedApi(key, payload) {
+    await idbSet(key, { timestamp: Date.now(), payload });
 }
 
 // Migrate data from localStorage to IndexedDB once, and load everything into in-memory cache

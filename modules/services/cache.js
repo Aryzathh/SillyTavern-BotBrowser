@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import { idbGetCachedApi, idbSetCachedApi } from '../storage/storage.js';
 // Dynamic import for SillyTavern compatibility - fails gracefully in standalone
 let default_avatar = '';
 try { default_avatar = (await import('/script.js')).default_avatar; } catch {}
@@ -14,6 +15,26 @@ import {
 } from './wyvernApi.js';
 
 const baseUrl = 'https://raw.githubusercontent.com/mia13165/updated_cards/main';
+
+async function withApiCache(cacheKey, ttlMs, fetchFunc) {
+    try {
+        const cached = await idbGetCachedApi(cacheKey, ttlMs);
+        if (cached) {
+            logger.log(`[API Cache] Returning ${cacheKey} from IndexedDB`);
+            return cached;
+        }
+        const result = await fetchFunc();
+        // Only cache if we got results (arrays > 0 or objects with data)
+        if (result && (Array.isArray(result) ? result.length > 0 : Object.keys(result).length > 0)) {
+            await idbSetCachedApi(cacheKey, result);
+        }
+        return result;
+    } catch (e) {
+        logger.error('[API Cache] Wrapper error:', e);
+        return await fetchFunc(); // Fallback to direct fetch
+    }
+}
+
 
 // Storage for loaded data
 const loadedData = {
@@ -87,7 +108,7 @@ export async function loadMoreChubCards(options = {}) {
 
         logger.log(`Loading Chub page ${chubApiState.currentPage}, search: "${chubApiState.currentSearch}", sort: ${apiSort}`);
 
-        const result = await searchChubCards({
+        const cacheOptions = {
             limit: 48,
             page: chubApiState.currentPage,
             search: chubApiState.currentSearch,
@@ -107,7 +128,8 @@ export async function loadMoreChubCards(options = {}) {
             requireExamples: options.requireExamples,
             requireLore: options.requireLore,
             requireGreetings: options.requireGreetings
-        });
+        };
+        const result = await withApiCache('api_chub_multi_' + JSON.stringify(cacheOptions), 1800000, () => searchChubCards(cacheOptions));
 
         let nodes = [];
         if (Array.isArray(result)) {
@@ -184,7 +206,7 @@ export async function loadMoreCharacterTavernCards(options = {}) {
     try {
         logger.log(`Loading Character Tavern page ${characterTavernApiState.page + 1}`);
 
-        const cards = await searchCharacterTavern({
+        const cacheOptions = {
             query: options.search || '',
             page: characterTavernApiState.page + 1,
             limit: 30,
@@ -193,7 +215,8 @@ export async function loadMoreCharacterTavernCards(options = {}) {
             minTokens: options.minTokens,
             maxTokens: options.maxTokens,
             tags: options.tags || []
-        });
+        };
+            const cards = await withApiCache('api_ctavern_live_' + JSON.stringify(cacheOptions), 1800000, () => searchCharacterTavern(cacheOptions));
 
         // Append to cache
         if (!loadedData.serviceIndexes['character_tavern_live']) {
@@ -239,7 +262,7 @@ export async function loadMoreChubLorebooks(options = {}) {
 
         logger.log(`Loading Chub lorebooks page ${chubLorebooksApiState.currentPage}, search: "${chubLorebooksApiState.currentSearch}", sort: ${apiSort}`);
 
-        const result = await searchChubLorebooks({
+        const cacheOptions = {
             limit: 48,
             page: chubLorebooksApiState.currentPage,
             search: chubLorebooksApiState.currentSearch,
@@ -252,7 +275,8 @@ export async function loadMoreChubLorebooks(options = {}) {
             tags: options.customTags,
             excludeTags: options.excludeTags,
             username: options.creatorUsername
-        });
+        };
+        const result = await withApiCache('api_chub_lore_multi_' + JSON.stringify(cacheOptions), 1800000, () => searchChubLorebooks(cacheOptions));
 
         let nodes = [];
         if (Array.isArray(result)) {
@@ -341,7 +365,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
 
         try {
             logger.log('Loading Character Tavern via live API');
-            const cards = await searchCharacterTavern({
+            const cacheOptions = {
                 query: options.search || '',
                 page: 1,
                 limit: 30,
@@ -350,7 +374,8 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
                 minTokens: options.minTokens,
                 maxTokens: options.maxTokens,
                 tags: options.tags || []
-            });
+            };
+            const cards = await withApiCache('api_ctavern_live_' + JSON.stringify(cacheOptions), 1800000, () => searchCharacterTavern(cacheOptions));
             loadedData.serviceIndexes['character_tavern_live'] = cards;
             return cards;
         } catch (error) {
@@ -366,7 +391,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
 
         try {
             logger.log('Loading MLPChag via live API');
-            const cards = await loadMlpchagLive();
+            const cards = await withApiCache('api_mlpchag_live', 1800000, () => loadMlpchagLive());
             loadedData.serviceIndexes['mlpchag_live'] = cards;
             return cards;
         } catch (error) {
@@ -382,14 +407,15 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
 
         try {
             logger.log('Loading Wyvern via live API');
-            const cards = await loadWyvernCharacters({
+            const cacheOptions = {
                 sort: options.sort || 'votes',
                 order: options.order || 'DESC',
                 search: options.search || '',
                 tags: options.tags || [],
                 rating: options.rating,
                 hideNsfw: options.hideNsfw || false
-            });
+            };
+            const cards = await withApiCache('api_wyvern_live_' + JSON.stringify(cacheOptions), 1800000, () => loadWyvernCharacters(cacheOptions));
             loadedData.serviceIndexes['wyvern_live'] = cards;
             return cards;
         } catch (error) {
@@ -406,14 +432,15 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
 
         try {
             logger.log('Loading Wyvern Lorebooks via live API');
-            const lorebooks = await loadWyvernLorebooks({
+            const cacheOptions = {
                 sort: options.sort || 'created_at',
                 order: options.order || 'DESC',
                 search: options.search || '',
                 tags: options.tags || [],
                 rating: options.rating,
                 hideNsfw: options.hideNsfw || false
-            });
+            };
+            const lorebooks = await withApiCache('api_wyvern_lore_live_' + JSON.stringify(cacheOptions), 1800000, () => loadWyvernLorebooks(cacheOptions));
             loadedData.serviceIndexes['wyvern_lorebooks_live'] = lorebooks;
             return lorebooks;
         } catch (error) {
@@ -625,13 +652,14 @@ export async function loadMoreWyvernCards(options = {}) {
     try {
         logger.log(`Loading Wyvern page ${wyvernApiState.page + 1}`);
 
-        const cards = await loadMoreWyvernCharacters({
+        const cacheOptions = {
             sort: options.sort || wyvernApiState.lastSort,
             order: options.order || wyvernApiState.lastOrder,
             search: options.search ?? wyvernApiState.lastSearch,
             tags: options.tags || [],
             hideNsfw: options.hideNsfw || false
-        });
+        };
+        const cards = await withApiCache('api_wyvern_multi_' + JSON.stringify(cacheOptions), 1800000, () => loadMoreWyvernCharacters(cacheOptions));
 
         // Append to cache
         if (!loadedData.serviceIndexes['wyvern_live']) {
@@ -657,12 +685,13 @@ export async function loadMoreWyvernLorebooksWrapper(options = {}) {
     try {
         logger.log(`Loading Wyvern Lorebooks page ${wyvernLorebooksApiState.page + 1}`);
 
-        const lorebooks = await loadMoreWyvernLorebooks({
+        const cacheOptions = {
             sort: options.sort || wyvernLorebooksApiState.lastSort,
             order: options.order || wyvernLorebooksApiState.lastOrder,
             search: options.search ?? wyvernLorebooksApiState.lastSearch,
             hideNsfw: options.hideNsfw || false
-        });
+        };
+        const lorebooks = await withApiCache('api_wyvern_lore_multi_' + JSON.stringify(cacheOptions), 1800000, () => loadMoreWyvernLorebooks(cacheOptions));
 
         // Append to cache
         if (!loadedData.serviceIndexes['wyvern_lorebooks_live']) {
