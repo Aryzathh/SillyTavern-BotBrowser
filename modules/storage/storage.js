@@ -1,87 +1,165 @@
-export function loadPersistentSearch(extensionName, extension_settings, serviceName) {
-    if (!extension_settings[extensionName].persistentSearchEnabled) {
+// --- IndexedDB Wrapper & In-Memory Cache System ---
+const DB_NAME = 'BotBrowserDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'keyval';
+
+let idbPromise = null;
+let memoryCache = {
+    persistentSearches: {},
+    searchCollapsed: false,
+    recentlyViewed: [],
+    importStats: { totalCharacters: 0, totalLorebooks: 0, imports: [], bySource: {}, byCreator: {} },
+    bookmarks: [],
+    importedCards: []
+};
+let isStorageInitialized = false;
+
+function getIDB() {
+    if (!idbPromise) {
+        idbPromise = new Promise((resolve, reject) => {
+            const req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onerror = e => reject('IndexedDB error: ' + e.target.error);
+            req.onsuccess = e => resolve(e.target.result);
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                }
+            };
+        });
+    }
+    return idbPromise;
+}
+
+export async function idbSet(key, val) {
+    try {
+        const db = await getIDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const req = store.put(val, key);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    } catch (e) {
+        console.warn('[Bot Browser] IndexedDB write failed, falling back to localStorage', e);
+        try { localStorage.setItem(key, JSON.stringify(val)); } catch (e2) { }
+    }
+}
+
+export async function idbGet(key) {
+    try {
+        const db = await getIDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const req = store.get(key);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    } catch (e) {
         return null;
     }
-    try {
-        const key = `botBrowser_lastSearch_${serviceName}`;
-        const saved = localStorage.getItem(key);
-        if (saved) {
-            const data = JSON.parse(saved);
-            console.log(`[Bot Browser] Loaded persistent search for ${serviceName}:`, data.filters);
-            return data;
+}
+
+// Migrate data from localStorage to IndexedDB once, and load everything into in-memory cache
+export async function initializeStorage() {
+    if (isStorageInitialized) return;
+    
+    // List of keys to manage
+    const keys = [
+        'botBrowser_searchCollapsed',
+        'botBrowser_recentlyViewed',
+        'botBrowser_importStats',
+        'botBrowser_bookmarks',
+        'botBrowser_importedCards'
+    ];
+
+    for (const key of keys) {
+        // Try to get from localStorage (legacy)
+        const lsVal = localStorage.getItem(key);
+        // Try to get from IndexedDB (new)
+        let idbVal = await idbGet(key);
+        
+        // If we have legacy LS data but no IDB data, migrate it!
+        if (lsVal && !idbVal) {
+            try {
+                const parsed = JSON.parse(lsVal);
+                await idbSet(key, parsed);
+                idbVal = parsed;
+                // Leave it in LS or clear it? Better leave it for a while to prevent data loss.
+            } catch (e) {}
         }
-    } catch (error) {
-        console.error('[Bot Browser] Error loading persistent search:', error);
-    }
-    return null;
-}
-
-// Save search state to localStorage (per-service)
-export function savePersistentSearch(extensionName, extension_settings, serviceName, filters, sortBy, advancedFilters = null, jannyAdvancedFilters = null, ctAdvancedFilters = null, wyvernAdvancedFilters = null) {
-    if (!extension_settings[extensionName].persistentSearchEnabled) {
-        return;
-    }
-    try {
-        const data = {
-            filters: filters,
-            sortBy: sortBy,
-            advancedFilters: advancedFilters,
-            jannyAdvancedFilters: jannyAdvancedFilters,
-            ctAdvancedFilters: ctAdvancedFilters,
-            wyvernAdvancedFilters: wyvernAdvancedFilters
-        };
-        const key = `botBrowser_lastSearch_${serviceName}`;
-        localStorage.setItem(key, JSON.stringify(data));
-    } catch (error) {
-        console.error('[Bot Browser] Error saving persistent search:', error);
-    }
-}
-
-// Load search collapsed state from localStorage
-export function loadSearchCollapsed() {
-    try {
-        const saved = localStorage.getItem('botBrowser_searchCollapsed');
-        if (saved !== null) {
-            const collapsed = JSON.parse(saved);
-            console.log('[Bot Browser] Loaded search collapsed state:', collapsed);
-            return collapsed;
+        
+        // Load into memory cache
+        if (idbVal !== undefined && idbVal !== null) {
+            if (key === 'botBrowser_searchCollapsed') memoryCache.searchCollapsed = idbVal;
+            if (key === 'botBrowser_recentlyViewed') memoryCache.recentlyViewed = idbVal;
+            if (key === 'botBrowser_importStats') memoryCache.importStats = idbVal;
+            if (key === 'botBrowser_bookmarks') memoryCache.bookmarks = idbVal;
+            if (key === 'botBrowser_importedCards') memoryCache.importedCards = idbVal;
+        } else if (lsVal) {
+            // Only LS existed and migration failed? Just use LS
+            try {
+                const parsed = JSON.parse(lsVal);
+                 if (key === 'botBrowser_searchCollapsed') memoryCache.searchCollapsed = parsed;
+                 if (key === 'botBrowser_recentlyViewed') memoryCache.recentlyViewed = parsed;
+                 if (key === 'botBrowser_importStats') memoryCache.importStats = parsed;
+                 if (key === 'botBrowser_bookmarks') memoryCache.bookmarks = parsed;
+                 if (key === 'botBrowser_importedCards') memoryCache.importedCards = parsed;
+            } catch(e) {}
         }
-    } catch (error) {
-        console.error('[Bot Browser] Error loading search collapsed state:', error);
     }
-    return false;
-}
-
-// Save search collapsed state to localStorage
-export function saveSearchCollapsed(collapsed) {
+    
+    // Also load dynamic keys (searches) from LS to memory (searches aren't usually massive so LS is fine)
     try {
-        localStorage.setItem('botBrowser_searchCollapsed', JSON.stringify(collapsed));
-    } catch (error) {
-        console.error('[Bot Browser] Error saving search collapsed state:', error);
-    }
-}
-
-// Load recently viewed cards from localStorage
-export function loadRecentlyViewed(extensionName, extension_settings) {
-    if (!extension_settings[extensionName].recentlyViewedEnabled) {
-        return [];
-    }
-    try {
-        const saved = localStorage.getItem('botBrowser_recentlyViewed');
-        if (saved) {
-            let recentlyViewed = JSON.parse(saved);
-            // Trim to max setting
-            const maxRecent = extension_settings[extensionName].maxRecentlyViewed || 10;
-            if (recentlyViewed.length > maxRecent) {
-                recentlyViewed = recentlyViewed.slice(0, maxRecent);
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('botBrowser_lastSearch_')) {
+                const serviceName = key.replace('botBrowser_lastSearch_', '');
+                memoryCache.persistentSearches[serviceName] = JSON.parse(localStorage.getItem(key));
             }
-            console.log('[Bot Browser] Loaded recently viewed:', recentlyViewed.length, 'cards');
-            return recentlyViewed;
         }
-    } catch (error) {
-        console.error('[Bot Browser] Error loading recently viewed:', error);
+    } catch (e) {}
+
+    isStorageInitialized = true;
+    console.log('[Bot Browser] Persistent storage initialized (IndexedDB + Memory Cache).');
+}
+
+// --- Sync Adapters for application logic (Synchronous reads, Asynchronous background writes) ---
+
+export function loadPersistentSearch(extensionName, extension_settings, serviceName) {
+    if (!extension_settings[extensionName].persistentSearchEnabled) return null;
+    return memoryCache.persistentSearches[serviceName] || null;
+}
+
+export function savePersistentSearch(extensionName, extension_settings, serviceName, filters, sortBy, advancedFilters = null, jannyAdvancedFilters = null, ctAdvancedFilters = null, wyvernAdvancedFilters = null) {
+    if (!extension_settings[extensionName].persistentSearchEnabled) return;
+    const data = { filters, sortBy, advancedFilters, jannyAdvancedFilters, ctAdvancedFilters, wyvernAdvancedFilters };
+    memoryCache.persistentSearches[serviceName] = data;
+    try { localStorage.setItem(`botBrowser_lastSearch_${serviceName}`, JSON.stringify(data)); } catch (e) {}
+}
+
+export function loadSearchCollapsed() {
+    return memoryCache.searchCollapsed;
+}
+
+export function saveSearchCollapsed(collapsed) {
+    memoryCache.searchCollapsed = collapsed;
+    idbSet('botBrowser_searchCollapsed', collapsed);
+}
+
+// Load recently viewed cards
+export function loadRecentlyViewed(extensionName, extension_settings) {
+    if (!extension_settings[extensionName].recentlyViewedEnabled) return [];
+    
+    let recentlyViewed = memoryCache.recentlyViewed || [];
+    const maxRecent = extension_settings[extensionName].maxRecentlyViewed || 10;
+    if (recentlyViewed.length > maxRecent) {
+        recentlyViewed = recentlyViewed.slice(0, maxRecent);
+        memoryCache.recentlyViewed = recentlyViewed;
     }
-    return [];
+    return recentlyViewed;
 }
 
 // Add card to recently viewed
@@ -138,9 +216,8 @@ export function addToRecentlyViewed(extensionName, extension_settings, recentlyV
             recentlyViewed = recentlyViewed.slice(0, maxRecent);
         }
 
-        // Save to localStorage
-        localStorage.setItem('botBrowser_recentlyViewed', JSON.stringify(recentlyViewed));
-
+        memoryCache.recentlyViewed = recentlyViewed;
+        idbSet('botBrowser_recentlyViewed', recentlyViewed); // Note: writes in background
         return recentlyViewed;
     } catch (error) {
         console.error('[Bot Browser] Error adding to recently viewed:', error);
@@ -148,58 +225,26 @@ export function addToRecentlyViewed(extensionName, extension_settings, recentlyV
     }
 }
 
-// Load import stats from localStorage
+// Load import stats
 export function loadImportStats() {
-    try {
-        const saved = localStorage.getItem('botBrowser_importStats');
-        if (saved) {
-            const stats = JSON.parse(saved);
-            console.log('[Bot Browser] Loaded import stats:', stats.totalCharacters, 'characters,', stats.totalLorebooks, 'lorebooks');
-            return stats;
-        }
-    } catch (error) {
-        console.error('[Bot Browser] Error loading import stats:', error);
-    }
-    return {
-        totalCharacters: 0,
-        totalLorebooks: 0,
-        imports: [],
-        bySource: {},
-        byCreator: {}
-    };
+    return memoryCache.importStats;
 }
 
-// Save import stats to localStorage
+// Save import stats
 export function saveImportStats(importStats) {
-    try {
-        localStorage.setItem('botBrowser_importStats', JSON.stringify(importStats));
-    } catch (error) {
-        console.error('[Bot Browser] Error saving import stats:', error);
-    }
+    memoryCache.importStats = importStats;
+    idbSet('botBrowser_importStats', importStats);
 }
 
-// Load bookmarks from localStorage
+// Load bookmarks
 export function loadBookmarks() {
-    try {
-        const saved = localStorage.getItem('botBrowser_bookmarks');
-        if (saved) {
-            const bookmarks = JSON.parse(saved);
-            console.log('[Bot Browser] Loaded bookmarks:', bookmarks.length, 'cards');
-            return bookmarks;
-        }
-    } catch (error) {
-        console.error('[Bot Browser] Error loading bookmarks:', error);
-    }
-    return [];
+    return memoryCache.bookmarks || [];
 }
 
-// Save bookmarks to localStorage
+// Save bookmarks
 export function saveBookmarks(bookmarks) {
-    try {
-        localStorage.setItem('botBrowser_bookmarks', JSON.stringify(bookmarks));
-    } catch (error) {
-        console.error('[Bot Browser] Error saving bookmarks:', error);
-    }
+    memoryCache.bookmarks = bookmarks;
+    idbSet('botBrowser_bookmarks', bookmarks);
 }
 
 // Add card to bookmarks
@@ -269,28 +314,15 @@ export function isBookmarked(cardId) {
     return bookmarks.some(b => b.id === cardId);
 }
 
-// Load imported cards from localStorage (for "My Imports" browsing)
+// Load imported cards
 export function loadImportedCards() {
-    try {
-        const saved = localStorage.getItem('botBrowser_importedCards');
-        if (saved) {
-            const cards = JSON.parse(saved);
-            console.log('[Bot Browser] Loaded imported cards:', cards.length, 'cards');
-            return cards;
-        }
-    } catch (error) {
-        console.error('[Bot Browser] Error loading imported cards:', error);
-    }
-    return [];
+    return memoryCache.importedCards || [];
 }
 
-// Save imported cards to localStorage
+// Save imported cards
 export function saveImportedCards(cards) {
-    try {
-        localStorage.setItem('botBrowser_importedCards', JSON.stringify(cards));
-    } catch (error) {
-        console.error('[Bot Browser] Error saving imported cards:', error);
-    }
+    memoryCache.importedCards = cards;
+    idbSet('botBrowser_importedCards', cards);
 }
 
 // Track an imported card with full data for browsing
@@ -372,12 +404,8 @@ export function removeImportedCard(cardId) {
 
 // Clear all imported cards
 export function clearImportedCards() {
-    try {
-        localStorage.removeItem('botBrowser_importedCards');
-        console.log('[Bot Browser] Cleared all imported cards');
-        return [];
-    } catch (error) {
-        console.error('[Bot Browser] Error clearing imported cards:', error);
-        return [];
-    }
+    memoryCache.importedCards = [];
+    idbSet('botBrowser_importedCards', []);
+    console.log('[Bot Browser] Cleared all imported cards');
+    return [];
 }

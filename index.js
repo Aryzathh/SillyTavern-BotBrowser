@@ -3,7 +3,7 @@ import { eventSource, event_types, saveSettingsDebounced, getRequestHeaders, get
 import { importWorldInfo, updateWorldInfoList } from '/scripts/world-info.js';
 
 // Import modules
-import { loadImportStats, saveImportStats, loadRecentlyViewed, loadPersistentSearch, loadBookmarks, removeBookmark, clearImportedCards } from './modules/storage/storage.js';
+import { initializeStorage, loadImportStats, saveImportStats, loadRecentlyViewed, loadPersistentSearch, loadBookmarks, removeBookmark, clearImportedCards } from './modules/storage/storage.js';
 import { getTimeAgo } from './modules/storage/stats.js';
 import { loadServiceIndex, initializeServiceCache, clearQuillgenCache } from './modules/services/cache.js';
 import { getRandomCard } from './modules/services/cards.js';
@@ -2856,6 +2856,9 @@ window.addEventListener('bot-browser-bulk-import', async (e) => {
 // Initialize extension
 jQuery(async () => {
     console.log('[Bot Browser] Extension loading...');
+
+    // Initialize IndexedDB storage cache
+    await initializeStorage();
 
     // CORS proxy support is lazy-loaded by corsProxy.js when needed
 
