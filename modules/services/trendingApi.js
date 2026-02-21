@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // Trending APIs for Bot Browser
 // Fetches trending/popular characters from various sources
 
@@ -18,7 +19,7 @@ export async function fetchCharacterTavernTrending(options = {}) {
     // CT trending doesn't seem to support pagination based on the API response
     const url = CT_TRENDING_URL;
 
-    console.log('[Bot Browser] Fetching Character Tavern trending:', url);
+    logger.log('Fetching Character Tavern trending:', url);
 
     const response = await proxiedFetch(url, {
         service: 'character_tavern_trending',
@@ -34,7 +35,7 @@ export async function fetchCharacterTavernTrending(options = {}) {
     }
 
     const data = await response.json();
-    console.log('[Bot Browser] Character Tavern trending response:', data);
+    logger.log('Character Tavern trending response:', data);
 
     return {
         hits: data.hits || [],
@@ -139,7 +140,7 @@ export async function fetchChubTrending(options = {}) {
     });
 
     const url = `${CHUB_GATEWAY_BASE}/search?${params}`;
-    console.log('[Bot Browser] Fetching Chub trending:', url);
+    logger.log('Fetching Chub trending:', url);
 
     const response = await proxiedFetch(url, {
         service: 'chub_trending',
@@ -166,7 +167,7 @@ export async function fetchChubTrending(options = {}) {
     chubTrendingState.totalHits = data?.data?.count || nodes.length;
     chubTrendingState.isLoading = false;
 
-    console.log(`[Bot Browser] Chub trending returned ${nodes.length} characters (page ${page})`);
+    logger.log(`Chub trending returned ${nodes.length} characters (page ${page})`);
 
     return {
         nodes,
@@ -262,7 +263,7 @@ export async function fetchWyvernTrending(options = {}) {
         });
 
         const url = `${WYVERN_API_BASE}/characters?${params}`;
-        console.log('[Bot Browser] Fetching Wyvern trending:', url);
+        logger.log('Fetching Wyvern trending:', url);
 
         const response = await proxiedFetch(url, {
             service: 'wyvern_trending',
@@ -285,7 +286,7 @@ export async function fetchWyvernTrending(options = {}) {
         wyvernTrendingState.lastSort = sort;
         wyvernTrendingState.isLoading = false;
 
-        console.log(`[Bot Browser] Wyvern trending returned ${data.results?.length || 0} characters`);
+        logger.log(`Wyvern trending returned ${data.results?.length || 0} characters`);
 
         return {
             results: data.results || [],
@@ -397,7 +398,7 @@ export async function fetchJannyTrending(options = {}) {
         });
 
         const url = `${JANITORAI_TRENDING_URL}?${params}`;
-        console.log('[Bot Browser] Fetching JannyAI trending:', url);
+        logger.log('Fetching JannyAI trending:', url);
 
         const response = await proxiedFetch(url, {
             service: 'jannyai_trending',
@@ -420,7 +421,7 @@ export async function fetchJannyTrending(options = {}) {
         jannyTrendingState.totalHits = data.total || characters.length;
         jannyTrendingState.isLoading = false;
 
-        console.log(`[Bot Browser] JanitorAI trending returned ${characters.length} characters (page ${page})`);
+        logger.log(`JanitorAI trending returned ${characters.length} characters (page ${page})`);
 
         return {
             characters,
@@ -564,7 +565,7 @@ export async function fetchBackyardTrending(options = {}) {
         backyardTrendingState.hasMore = result.hasMore;
         backyardTrendingState.isLoading = false;
 
-        console.log(`[Bot Browser] Backyard.ai trending returned ${result.characters.length} characters`);
+        logger.log(`Backyard.ai trending returned ${result.characters.length} characters`);
 
         return {
             characters: result.characters,

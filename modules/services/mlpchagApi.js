@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // MLPChag Live API Service
 // Fetches character data from https://mlpchag.neocities.org/mares.json
 
@@ -33,12 +34,12 @@ async function fetchWithTimeout(url, fetchOptions = {}, timeoutMs = DEFAULT_TIME
 export async function loadMlpchagLive() {
     // Check cache
     if (cachedData && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_TTL)) {
-        console.log(`[Bot Browser] Using cached MLPChag data (${cachedData.length} cards)`);
+        logger.log(`Using cached MLPChag data (${cachedData.length} cards)`);
         return cachedData;
     }
 
     if (mlpchagApiState.isLoading) {
-        console.log('[Bot Browser] MLPChag API request already in progress');
+        logger.log('MLPChag API request already in progress');
         // Wait for existing request
         while (mlpchagApiState.isLoading) {
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -49,7 +50,7 @@ export async function loadMlpchagLive() {
     mlpchagApiState.isLoading = true;
 
     try {
-        console.log('[Bot Browser] Fetching MLPChag live data...');
+        logger.log('Fetching MLPChag live data...');
 
         // Important: do not send custom headers here. Any non-simple header will trigger a CORS
         // preflight, and Neocities does not consistently allow OPTIONS.
@@ -70,11 +71,11 @@ export async function loadMlpchagLive() {
         mlpchagApiState.lastLoad = new Date().toISOString();
         mlpchagApiState.totalCards = cachedData.length;
 
-        console.log(`[Bot Browser] MLPChag loaded ${cachedData.length} cards`);
+        logger.log(`MLPChag loaded ${cachedData.length} cards`);
 
         return cachedData;
     } catch (error) {
-        console.error('[Bot Browser] MLPChag API error:', error);
+        logger.error('MLPChag API error:', error);
         throw error;
     } finally {
         mlpchagApiState.isLoading = false;
@@ -200,7 +201,7 @@ export function clearMlpchagCache() {
     cachedData = null;
     cacheTimestamp = null;
     mlpchagApiState.totalCards = 0;
-    console.log('[Bot Browser] MLPChag cache cleared');
+    logger.log('MLPChag cache cleared');
 }
 
 /**

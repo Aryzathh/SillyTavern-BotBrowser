@@ -1,3 +1,4 @@
+import { logger } from './utils/logger.js';
 import { Fuse } from '../../../../../lib.js';
 import { debounce, escapeHTML } from './utils/utils.js';
 import { createBrowserHeader, createCardGrid, createCardHTML, createBottomActions, createBulkActionBar, createErrorStateHTML } from './templates/templates.js';
@@ -99,7 +100,7 @@ async function loadCardsUntilTarget({ state, extensionName, extension_settings, 
                 break;
             }
         } catch (error) {
-            console.error('[Bot Browser] Failed to load more cards:', error);
+            logger.error('Failed to load more cards:', error);
             lastError = error;
             break;
         }
@@ -119,12 +120,12 @@ function applyClientSideFilters(cards, state, extensionName, extension_settings)
         const imageUrl = card.avatar_url || card.image_url;
         const hasValidImage = imageUrl && imageUrl.trim().length > 0 && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'));
         if (!hasValidImage) {
-            console.log(`[Bot Browser] No valid image: Hiding "${card.name}" - image URL: "${imageUrl || 'none'}"`);
+            logger.log(`No valid image: Hiding "${card.name}" - image URL: "${imageUrl || 'none'}"`);
         }
         return hasValidImage;
     });
 
-    console.log(`[Bot Browser] applyClientSideFilters: ${cards.length} input -> ${filtered.length} after blocklist/NSFW -> ${cardsWithImages.length} after image filter`);
+    logger.log(`applyClientSideFilters: ${cards.length} input -> ${filtered.length} after blocklist/NSFW -> ${cardsWithImages.length} after image filter`);
 
     return cardsWithImages;
 }
@@ -421,7 +422,7 @@ export async function createCardBrowser(serviceName, cards, state, extensionName
         });
     }
 
-    console.log('[Bot Browser] Card browser created with', sortedCards.length, 'cards');
+    logger.log('Card browser created with', sortedCards.length, 'cards');
 }
 
 // Update filter dropdowns
@@ -430,7 +431,7 @@ function updateFilterDropdowns(menuContent, allTags, allCreators, state) {
     const tagFilterContainer = menuContent.querySelector('#bot-browser-tag-filter');
 
     if (!tagFilterContainer) {
-        console.warn('[Bot Browser] Tag filter container not found');
+        logger.warn('Tag filter container not found');
         return;
     }
 
@@ -438,7 +439,7 @@ function updateFilterDropdowns(menuContent, allTags, allCreators, state) {
     const tagTriggerText = tagFilterContainer.querySelector('.selected-text');
 
     if (!tagOptionsContainer || !tagTriggerText) {
-        console.warn('[Bot Browser] Tag filter elements not found');
+        logger.warn('Tag filter elements not found');
         return;
     }
 
@@ -639,7 +640,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
         if (state.isLiveChub) {
             const chubService = state.isLorebooks ? 'chub_lorebooks' : 'chub';
             const chubTypeLabel = state.isLorebooks ? 'lorebooks' : 'cards';
-            console.log(`[Bot Browser] Triggering Chub API ${chubTypeLabel} search:`, state.filters.search);
+            logger.log(`Triggering Chub API ${chubTypeLabel} search:`, state.filters.search);
             try {
                 // Reset and reload with new search
                 let cards = await loadServiceIndex(chubService, true, {
@@ -651,7 +652,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
 
                 // If API returns no results and we have a search query, fallback to archive
                 if (cards.length === 0 && state.filters.search.trim()) {
-                    console.log('[Bot Browser] Chub API returned no results, searching archive...');
+                    logger.log('Chub API returned no results, searching archive...');
                     const archiveCards = await loadServiceIndex(chubService, false);
                     if (archiveCards.length > 0) {
                         const fuseKeys = state.isLorebooks
@@ -664,7 +665,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                         });
                         const archiveResults = archiveFuse.search(state.filters.search);
                         cards = archiveResults.map(r => ({ ...r.item, fromArchive: true }));
-                        console.log(`[Bot Browser] Found ${cards.length} results in Chub archive`);
+                        logger.log(`Found ${cards.length} results in Chub archive`);
                     }
                 }
 
@@ -684,13 +685,13 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
 
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
-                console.error('[Bot Browser] Chub API search failed:', error);
+                logger.error('Chub API search failed:', error);
                 const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
                 if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isJannyAI) {
             // For JannyAI, trigger fresh API search
-            console.log('[Bot Browser] Triggering JannyAI search:', state.filters.search);
+            logger.log('Triggering JannyAI search:', state.filters.search);
             try {
                 resetJannyApiState();
 
@@ -734,13 +735,13 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 updateCachedFiltersAndDropdowns(state, menuContent);
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
-                console.error('[Bot Browser] JannyAI search failed:', error);
+                logger.error('JannyAI search failed:', error);
                 const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
                 if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isCharacterTavern) {
             // For Character Tavern, trigger fresh API search
-            console.log('[Bot Browser] Triggering Character Tavern search:', state.filters.search);
+            logger.log('Triggering Character Tavern search:', state.filters.search);
             try {
                 resetCharacterTavernState();
 
@@ -757,7 +758,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
 
                 // If API returns no results and we have a search query, fallback to archive
                 if (cards.length === 0 && state.filters.search.trim()) {
-                    console.log('[Bot Browser] CT API returned no results, searching archive...');
+                    logger.log('CT API returned no results, searching archive...');
                     const archiveCards = await loadServiceIndex('character_tavern', false);
                     if (archiveCards.length > 0) {
                         const archiveFuse = new Fuse(archiveCards, {
@@ -767,7 +768,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                         });
                         const archiveResults = archiveFuse.search(state.filters.search);
                         cards = archiveResults.map(r => ({ ...r.item, fromArchive: true }));
-                        console.log(`[Bot Browser] Found ${cards.length} results in CT archive`);
+                        logger.log(`Found ${cards.length} results in CT archive`);
                     }
                 }
 
@@ -785,13 +786,13 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 updateCachedFiltersAndDropdowns(state, menuContent);
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
-                console.error('[Bot Browser] Character Tavern search failed:', error);
+                logger.error('Character Tavern search failed:', error);
                 const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
                 if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isWyvern) {
             // For Wyvern, trigger fresh API search
-            console.log('[Bot Browser] Triggering Wyvern search:', state.filters.search);
+            logger.log('Triggering Wyvern search:', state.filters.search);
             try {
                 if (state.isWyvernLorebooks) {
                     resetWyvernLorebooksApiState();
@@ -839,13 +840,13 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 updateCachedFiltersAndDropdowns(state, menuContent);
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
-                console.error('[Bot Browser] Wyvern search failed:', error);
+                logger.error('Wyvern search failed:', error);
                 const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
                 if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isAllSources && state.filters.search.trim()) {
             // For All Sources with a search query, query live APIs in parallel with local search
-            console.log('[Bot Browser] All Sources search:', state.filters.search);
+            logger.log('All Sources search:', state.filters.search);
             try {
                 const useLiveChubApi = extension_settings[extensionName].useChubLiveApi !== false;
                 const useRisuRealmLiveApi = extension_settings[extensionName].useRisuRealmLiveApi !== false;
@@ -903,7 +904,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
 
                 // Merge local and API results, deduplicate
                 const mergedCards = deduplicateCards([...allApiCards, ...localResults]);
-                console.log(`[Bot Browser] All Sources search: ${localResults.length} local + ${allApiCards.length} API = ${mergedCards.length} unique`);
+                logger.log(`All Sources search: ${localResults.length} local + ${allApiCards.length} API = ${mergedCards.length} unique`);
 
                 state.currentCards = mergedCards;
                 state.fuse = new Fuse(mergedCards, state.fuseOptions);
@@ -916,14 +917,14 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 updateCachedFiltersAndDropdowns(state, menuContent);
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
-                console.error('[Bot Browser] All Sources search failed:', error);
+                logger.error('All Sources search failed:', error);
                 // Fall back to local search
                 refreshCardGrid(state, extensionName, extension_settings, showCardDetailFunc);
             }
         } else {
             // Lazy initialize Fuse.js when user starts searching
             if (state.filters.search && !state.fuse) {
-                console.log('[Bot Browser] Initializing Fuse.js search index...');
+                logger.log('Initializing Fuse.js search index...');
                 state.fuse = new Fuse(state.currentCards, state.fuseOptions);
             }
             refreshCardGrid(state, extensionName, extension_settings, showCardDetailFunc);
@@ -1043,7 +1044,7 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                     countContainer.textContent = `Browsing Chub API (${filteredCards.length} cards loaded)`;
                 }
             } catch (error) {
-                console.error('[Bot Browser] Failed to clear filters:', error);
+                logger.error('Failed to clear filters:', error);
                 toastr.error('Failed to clear filters: ' + error.message);
             } finally {
                 clearButton.disabled = false;
@@ -1112,7 +1113,7 @@ function setupAdvancedFilterListeners(menuContent, state, extensionName, extensi
             requireGreetings: menuContent.querySelector('.bot-browser-require-greetings').checked
         };
 
-        console.log('[Bot Browser] Applying advanced filters:', state.advancedFilters);
+        logger.log('Applying advanced filters:', state.advancedFilters);
 
         // Trigger new API search with all filters
         try {
@@ -1149,7 +1150,7 @@ function setupAdvancedFilterListeners(menuContent, state, extensionName, extensi
                 countContainer.textContent = `Browsing Chub API (${filteredCards.length} ${label} loaded)`;
             }
         } catch (error) {
-            console.error('[Bot Browser] Chub API advanced filter search failed:', error);
+            logger.error('Chub API advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
             setButtonResourceLoading(applyBtn, false);
@@ -1190,7 +1191,7 @@ function setupJannyAdvancedFilterListeners(menuContent, state, extensionName, ex
             hideLowQuality: hideLowQuality
         };
 
-        console.log('[Bot Browser] Applying JannyAI advanced filters:', state.jannyAdvancedFilters);
+        logger.log('Applying JannyAI advanced filters:', state.jannyAdvancedFilters);
 
         // Trigger new API search with all filters
         try {
@@ -1242,7 +1243,7 @@ function setupJannyAdvancedFilterListeners(menuContent, state, extensionName, ex
                 countContainer.textContent = `Browsing JannyAI (${filteredCards.length} cards loaded)`;
             }
         } catch (error) {
-            console.error('[Bot Browser] JannyAI advanced filter search failed:', error);
+            logger.error('JannyAI advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
             setButtonResourceLoading(applyBtn, false);
@@ -1285,7 +1286,7 @@ function setupCTAdvancedFilterListeners(menuContent, state, extensionName, exten
             isOC: menuContent.querySelector('.bot-browser-ct-is-oc').checked
         };
 
-        console.log('[Bot Browser] Applying Character Tavern advanced filters:', state.ctAdvancedFilters);
+        logger.log('Applying Character Tavern advanced filters:', state.ctAdvancedFilters);
 
         // Trigger new API search with all filters
         try {
@@ -1323,7 +1324,7 @@ function setupCTAdvancedFilterListeners(menuContent, state, extensionName, exten
                 countContainer.textContent = `Browsing Character Tavern (${filteredCards.length} cards loaded)`;
             }
         } catch (error) {
-            console.error('[Bot Browser] Character Tavern advanced filter search failed:', error);
+            logger.error('Character Tavern advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
             setButtonResourceLoading(applyBtn, false);
@@ -1363,7 +1364,7 @@ function setupWyvernAdvancedFilterListeners(menuContent, state, extensionName, e
             tags: tags
         };
 
-        console.log('[Bot Browser] Applying Wyvern advanced filters:', state.wyvernAdvancedFilters);
+        logger.log('Applying Wyvern advanced filters:', state.wyvernAdvancedFilters);
 
         // Trigger new API search with all filters
         try {
@@ -1419,7 +1420,7 @@ function setupWyvernAdvancedFilterListeners(menuContent, state, extensionName, e
                 countContainer.textContent = `Browsing Wyvern Chat (${filteredCards.length} cards loaded)`;
             }
         } catch (error) {
-            console.error('[Bot Browser] Wyvern advanced filter search failed:', error);
+            logger.error('Wyvern advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
             setButtonResourceLoading(applyBtn, false);
@@ -1585,7 +1586,7 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
 
             // For live Chub, trigger fresh API call with new sort
             if (state.isLiveChub) {
-                console.log('[Bot Browser] Triggering Chub API sort:', state.sortBy);
+                logger.log('Triggering Chub API sort:', state.sortBy);
                 (async () => {
                     try {
                         const chubService = state.isLorebooks ? 'chub_lorebooks' : 'chub';
@@ -1626,12 +1627,12 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
 
                         renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
                     } catch (error) {
-                        console.error('[Bot Browser] Chub API sort failed:', error);
+                        logger.error('Chub API sort failed:', error);
                     }
                 })();
             } else if (state.isJannyAI) {
                 // For JannyAI, trigger fresh API call with new sort
-                console.log('[Bot Browser] Triggering JannyAI sort:', state.sortBy);
+                logger.log('Triggering JannyAI sort:', state.sortBy);
                 (async () => {
                     try {
                         resetJannyApiState();
@@ -1676,12 +1677,12 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
                         updateCachedFiltersAndDropdowns(state, menuContent);
                         renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
                     } catch (error) {
-                        console.error('[Bot Browser] JannyAI sort failed:', error);
+                        logger.error('JannyAI sort failed:', error);
                     }
                 })();
             } else if (state.isCharacterTavern) {
                 // For Character Tavern, trigger fresh API call with new sort
-                console.log('[Bot Browser] Triggering Character Tavern sort:', state.sortBy);
+                logger.log('Triggering Character Tavern sort:', state.sortBy);
                 (async () => {
                     try {
                         resetCharacterTavernState();
@@ -1712,12 +1713,12 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
                         updateCachedFiltersAndDropdowns(state, menuContent);
                         renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
                     } catch (error) {
-                        console.error('[Bot Browser] Character Tavern sort failed:', error);
+                        logger.error('Character Tavern sort failed:', error);
                     }
                 })();
             } else if (state.isWyvern) {
                 // For Wyvern, trigger fresh API call with new sort
-                console.log('[Bot Browser] Triggering Wyvern sort:', state.sortBy);
+                logger.log('Triggering Wyvern sort:', state.sortBy);
                 (async () => {
                     try {
                         if (state.isWyvernLorebooks) {
@@ -1767,7 +1768,7 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
                         updateCachedFiltersAndDropdowns(state, menuContent);
                         renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
                     } catch (error) {
-                        console.error('[Bot Browser] Wyvern sort failed:', error);
+                        logger.error('Wyvern sort failed:', error);
                     }
                 })();
             } else {
@@ -1905,7 +1906,7 @@ function setupInfiniteScrollSentinel(gridContainer, state, menuContent, showCard
     const hasMoreApi = getApiHasMore(state);
     
     if (!hasMoreLocal && !hasMoreApi) {
-        console.log(`[Bot Browser] Infinite Scroll stopped. Local: ${hasMoreLocal}, API: ${hasMoreApi}. Rendered: ${state.renderedCardsCount}/${state.filteredCards.length}`);
+        logger.log(`Infinite Scroll stopped. Local: ${hasMoreLocal}, API: ${hasMoreApi}. Rendered: ${state.renderedCardsCount}/${state.filteredCards.length}`);
         if (state.currentCards.length > 0 && state.currentPage > 1) {
             gridContainer.insertAdjacentHTML('beforeend', '<div class="bot-browser-infinite-scroll-sentinel"><i class="fa-solid fa-check"></i> <span>No more cards to load</span></div>');
         }
@@ -1921,16 +1922,16 @@ function setupInfiniteScrollSentinel(gridContainer, state, menuContent, showCard
     
     infiniteScrollObserver = new IntersectionObserver(async (entries) => {
         if (entries[0].isIntersecting && !isInfiniteLoading) {
-            console.log(`[Bot Browser] Infinite Scroll triggered! Local: ${hasMoreLocal}, API: ${hasMoreApi}`);
+            logger.log(`Infinite Scroll triggered! Local: ${hasMoreLocal}, API: ${hasMoreApi}`);
             isInfiniteLoading = true;
             
             if (hasMoreLocal) {
                 state.currentPage++;
-                console.log(`[Bot Browser] Rendering next local page ${state.currentPage}...`);
+                logger.log(`Rendering next local page ${state.currentPage}...`);
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings, true);
                 isInfiniteLoading = false;
             } else if (hasMoreApi) {
-                console.log(`[Bot Browser] Fetching next API page...`);
+                logger.log(`Fetching next API page...`);
                 await fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
                 isInfiniteLoading = false;
             }
@@ -1942,7 +1943,7 @@ function setupInfiniteScrollSentinel(gridContainer, state, menuContent, showCard
 
 async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
     try {
-        console.log(`[Bot Browser] fetchApiDataForInfiniteScroll starting for service: ${state.currentService}`);
+        logger.log(`fetchApiDataForInfiniteScroll starting for service: ${state.currentService}`);
         let newCards = [];
         
         if (state.isLiveChub) {
@@ -2067,13 +2068,13 @@ async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailF
 
         if (state.isLiveChub) {
             // Internally handled by loadCardsUntilTarget
-            console.log(`[Bot Browser] Chub API loadCardsUntilTarget completed. Total cards: ${state.currentCards.length}`);
+            logger.log(`Chub API loadCardsUntilTarget completed. Total cards: ${state.currentCards.length}`);
         } else if (newCards.length > 0) {
-            console.log(`[Bot Browser] Fetched ${newCards.length} new cards from API. Appending...`);
+            logger.log(`Fetched ${newCards.length} new cards from API. Appending...`);
             state.currentCards = [...state.currentCards, ...newCards];
             state.fuse = null;
         } else {
-            console.log(`[Bot Browser] API returned 0 new cards.`);
+            logger.log(`API returned 0 new cards.`);
         }
         
         state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
@@ -2084,7 +2085,7 @@ async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailF
         renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings, true);
         
     } catch (error) {
-        console.error('[Bot Browser] Infinite Scroll API Fetch Error:', error);
+        logger.error('Infinite Scroll API Fetch Error:', error);
         toastr.error('Failed to load next page');
         const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
         if (gridContainer) {

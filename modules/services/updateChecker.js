@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // Extension Update Checker
 // Checks GitHub for newer versions and shows a subtle notification
 
@@ -71,7 +72,7 @@ export async function checkForUpdates(currentVersion) {
             };
 
             if (hasUpdate) {
-                console.log(`[Bot Browser] Update available: v${currentVersion} → v${latestVersion}`);
+                logger.log(`Update available: v${currentVersion} → v${latestVersion}`);
             }
 
             return updateCheckResult;

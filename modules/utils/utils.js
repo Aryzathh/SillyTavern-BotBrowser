@@ -1,3 +1,4 @@
+import { logger } from './logger.js';
 export function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -52,7 +53,7 @@ export function safeHTML(htmlContent) {
     }
 
     // Fallback: Remove script tags and on* attributes if DOMPurify isn't loaded
-    console.warn('[Bot Browser] DOMPurify not found, using fallback HTML sanitization.');
+    logger.warn('DOMPurify not found, using fallback HTML sanitization.');
     let sanitized = String(htmlContent);
     // Remove <script> tags and their content
     sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');

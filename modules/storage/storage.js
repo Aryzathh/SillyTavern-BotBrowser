@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // --- IndexedDB Wrapper & In-Memory Cache System ---
 const DB_NAME = 'BotBrowserDB';
 const DB_VERSION = 1;
@@ -42,7 +43,7 @@ export async function idbSet(key, val) {
             req.onerror = () => reject(req.error);
         });
     } catch (e) {
-        console.warn('[Bot Browser] IndexedDB write failed, falling back to localStorage', e);
+        logger.warn('IndexedDB write failed, falling back to localStorage', e);
         try { localStorage.setItem(key, JSON.stringify(val)); } catch (e2) { }
     }
 }
@@ -123,7 +124,7 @@ export async function initializeStorage() {
     } catch (e) {}
 
     isStorageInitialized = true;
-    console.log('[Bot Browser] Persistent storage initialized (IndexedDB + Memory Cache).');
+    logger.log('Persistent storage initialized (IndexedDB + Memory Cache).');
 }
 
 // --- Sync Adapters for application logic (Synchronous reads, Asynchronous background writes) ---
@@ -220,7 +221,7 @@ export function addToRecentlyViewed(extensionName, extension_settings, recentlyV
         idbSet('botBrowser_recentlyViewed', recentlyViewed); // Note: writes in background
         return recentlyViewed;
     } catch (error) {
-        console.error('[Bot Browser] Error adding to recently viewed:', error);
+        logger.error('Error adding to recently viewed:', error);
         return recentlyViewed;
     }
 }
@@ -254,7 +255,7 @@ export function addBookmark(card) {
 
         // Check if already bookmarked
         if (bookmarks.some(b => b.id === card.id)) {
-            console.log('[Bot Browser] Card already bookmarked:', card.name);
+            logger.log('Card already bookmarked:', card.name);
             return bookmarks;
         }
 
@@ -282,10 +283,10 @@ export function addBookmark(card) {
         });
 
         saveBookmarks(bookmarks);
-        console.log('[Bot Browser] Added bookmark:', card.name);
+        logger.log('Added bookmark:', card.name);
         return bookmarks;
     } catch (error) {
-        console.error('[Bot Browser] Error adding bookmark:', error);
+        logger.error('Error adding bookmark:', error);
         return loadBookmarks();
     }
 }
@@ -299,11 +300,11 @@ export function removeBookmark(cardId) {
 
         if (bookmarks.length < before) {
             saveBookmarks(bookmarks);
-            console.log('[Bot Browser] Removed bookmark:', cardId);
+            logger.log('Removed bookmark:', cardId);
         }
         return bookmarks;
     } catch (error) {
-        console.error('[Bot Browser] Error removing bookmark:', error);
+        logger.error('Error removing bookmark:', error);
         return loadBookmarks();
     }
 }
@@ -375,11 +376,11 @@ export function trackImportedCard(card, type = 'character') {
         }
 
         saveImportedCards(importedCards);
-        console.log('[Bot Browser] Tracked imported card:', card.name);
+        logger.log('Tracked imported card:', card.name);
 
         return importedCards;
     } catch (error) {
-        console.error('[Bot Browser] Error tracking imported card:', error);
+        logger.error('Error tracking imported card:', error);
         return loadImportedCards();
     }
 }
@@ -393,11 +394,11 @@ export function removeImportedCard(cardId) {
 
         if (importedCards.length < before) {
             saveImportedCards(importedCards);
-            console.log('[Bot Browser] Removed imported card:', cardId);
+            logger.log('Removed imported card:', cardId);
         }
         return importedCards;
     } catch (error) {
-        console.error('[Bot Browser] Error removing imported card:', error);
+        logger.error('Error removing imported card:', error);
         return loadImportedCards();
     }
 }
@@ -406,6 +407,6 @@ export function removeImportedCard(cardId) {
 export function clearImportedCards() {
     memoryCache.importedCards = [];
     idbSet('botBrowser_importedCards', []);
-    console.log('[Bot Browser] Cleared all imported cards');
+    logger.log('Cleared all imported cards');
     return [];
 }

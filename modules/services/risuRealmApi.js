@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // RisuRealm API Service
 // Live API for searching characters from realm.risuai.net
 
@@ -90,7 +91,7 @@ function parseDevalueData(data) {
                 cards.push(card);
             }
         } catch (e) {
-            console.warn('[Bot Browser] Failed to parse RisuRealm card:', e);
+            logger.warn('Failed to parse RisuRealm card:', e);
         }
     }
 
@@ -137,7 +138,7 @@ export async function searchRisuRealm(options = {}) {
         params.set('_t', Date.now().toString());
 
         const url = `${RISU_DATA_URL}?${params}`;
-        console.log('[Bot Browser] RisuRealm API request:', url);
+        logger.log('RisuRealm API request:', url);
 
         const response = await proxiedFetch(url, {
             service: 'risuai_realm',
@@ -154,7 +155,7 @@ export async function searchRisuRealm(options = {}) {
         }
 
         const json = await response.json();
-        console.log('[Bot Browser] RisuRealm raw response structure:', Object.keys(json));
+        logger.log('RisuRealm raw response structure:', Object.keys(json));
 
         // Navigate to the data array - try multiple paths
         // SvelteKit response format can vary
@@ -163,17 +164,17 @@ export async function searchRisuRealm(options = {}) {
         // Try nodes[1].data first (initial page load format)
         if (json?.nodes?.[1]?.data) {
             nodeData = json.nodes[1].data;
-            console.log('[Bot Browser] Found data at nodes[1].data');
+            logger.log('Found data at nodes[1].data');
         }
         // Try nodes[0].data (alternative format)
         else if (json?.nodes?.[0]?.data) {
             nodeData = json.nodes[0].data;
-            console.log('[Bot Browser] Found data at nodes[0].data');
+            logger.log('Found data at nodes[0].data');
         }
         // Try direct data property
         else if (json?.data) {
             nodeData = json.data;
-            console.log('[Bot Browser] Found data at root data property');
+            logger.log('Found data at root data property');
         }
         // Try nodes array directly
         else if (Array.isArray(json?.nodes)) {
@@ -181,14 +182,14 @@ export async function searchRisuRealm(options = {}) {
             for (let i = 0; i < json.nodes.length; i++) {
                 if (json.nodes[i]?.data && Array.isArray(json.nodes[i].data)) {
                     nodeData = json.nodes[i].data;
-                    console.log(`[Bot Browser] Found data at nodes[${i}].data`);
+                    logger.log(`Found data at nodes[${i}].data`);
                     break;
                 }
             }
         }
 
         if (!nodeData) {
-            console.error('[Bot Browser] RisuRealm response structure:', JSON.stringify(json).substring(0, 1000));
+            logger.error('RisuRealm response structure:', JSON.stringify(json).substring(0, 1000));
             throw new Error('Invalid RisuRealm response format - could not find data array');
         }
 
@@ -197,7 +198,7 @@ export async function searchRisuRealm(options = {}) {
         // Log card names to verify different data
         const firstCards = cards.slice(0, 3).map(c => c.name);
         const lastCards = cards.slice(-3).map(c => c.name);
-        console.log(`[Bot Browser] RisuRealm page ${page} cards: first=[${firstCards.join(', ')}] last=[${lastCards.join(', ')}]`);
+        logger.log(`RisuRealm page ${page} cards: first=[${firstCards.join(', ')}] last=[${lastCards.join(', ')}]`);
 
         // Get pagination info from metadata
         // The metadata structure varies - look for totalPages, pages, or page count
@@ -225,8 +226,8 @@ export async function searchRisuRealm(options = {}) {
         risuRealmApiState.lastSearch = search;
         risuRealmApiState.lastSort = sort;
 
-        console.log(`[Bot Browser] RisuRealm API returned ${cards.length} cards (page ${page}, hasMore: ${hasMore})`);
-        console.log('[Bot Browser] RisuRealm metadata:', JSON.stringify(metadata));
+        logger.log(`RisuRealm API returned ${cards.length} cards (page ${page}, hasMore: ${hasMore})`);
+        logger.log('RisuRealm metadata:', JSON.stringify(metadata));
 
         return {
             cards,
@@ -235,7 +236,7 @@ export async function searchRisuRealm(options = {}) {
             hasMore
         };
     } catch (error) {
-        console.error('[Bot Browser] RisuRealm API error:', error);
+        logger.error('RisuRealm API error:', error);
         throw error;
     } finally {
         risuRealmApiState.isLoading = false;
@@ -282,7 +283,7 @@ export async function fetchRisuRealmTrending(options = {}) {
  */
 export async function fetchRisuRealmCharacter(characterId) {
     const url = `${RISU_BASE_URL}/character/${characterId}/__data.json`;
-    console.log('[Bot Browser] RisuRealm Character API request:', url);
+    logger.log('RisuRealm Character API request:', url);
 
     const response = await proxiedFetch(url, {
         service: 'risuai_realm',
@@ -330,7 +331,7 @@ export async function fetchRisuRealmCharacter(characterId) {
         }
     }
 
-    console.log('[Bot Browser] RisuRealm Character loaded:', card.name);
+    logger.log('RisuRealm Character loaded:', card.name);
     return card;
 }
 

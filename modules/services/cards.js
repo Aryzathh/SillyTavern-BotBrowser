@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 import { buildProxyUrl, PROXY_TYPES, proxiedFetch } from './corsProxy.js';
 
 export function getAllTags(cards) {
@@ -71,7 +72,7 @@ export function filterCards(cards, filters, fuse, extensionName, extension_setti
 
     const blocklist = extension_settings[extensionName].tagBlocklist || [];
     const hideNsfw = extension_settings[extensionName].hideNsfw || false;
-    console.log(`[Bot Browser] filterCards: blocklist=[${blocklist.join(', ')}], hideNsfw=${hideNsfw}, search="${filters.search || ''}", tags=[${filters.tags?.join(', ') || ''}], creator="${filters.creator || ''}", input=${cards.length} cards`);
+    logger.log(`filterCards: blocklist=[${blocklist.join(', ')}], hideNsfw=${hideNsfw}, search="${filters.search || ''}", tags=[${filters.tags?.join(', ') || ''}], creator="${filters.creator || ''}", input=${cards.length} cards`);
 
     // Text search using Fuse.js for fuzzy matching
     if (filters.search && fuse) {
@@ -113,7 +114,7 @@ export function filterCards(cards, filters, fuse, extensionName, extension_setti
                     const normalizedTags = card.tags.map(tag => tag.toLowerCase().trim());
                     const matchedTag = normalizedBlocklist.find(blocked => normalizedTags.includes(blocked));
                     if (matchedTag) {
-                        console.log(`[Bot Browser] Blocklist: Hiding "${card.name}" - tag match: "${matchedTag}"`);
+                        logger.log(`Blocklist: Hiding "${card.name}" - tag match: "${matchedTag}"`);
                         return false;
                     }
                 }
@@ -128,7 +129,7 @@ export function filterCards(cards, filters, fuse, extensionName, extension_setti
                     return wordBoundaryRegex.test(desc);
                 });
                 if (matchedDescTerm) {
-                    console.log(`[Bot Browser] Blocklist: Hiding "${card.name}" - desc match: "${matchedDescTerm}" in "${desc.substring(0, 100)}..."`);
+                    logger.log(`Blocklist: Hiding "${card.name}" - desc match: "${matchedDescTerm}" in "${desc.substring(0, 100)}..."`);
                     return false;
                 }
 
@@ -140,7 +141,7 @@ export function filterCards(cards, filters, fuse, extensionName, extension_setti
                     return wordBoundaryRegex.test(name);
                 });
                 if (matchedNameTerm) {
-                    console.log(`[Bot Browser] Blocklist: Hiding "${card.name}" - name match: "${matchedNameTerm}"`);
+                    logger.log(`Blocklist: Hiding "${card.name}" - name match: "${matchedNameTerm}"`);
                     return false;
                 }
             }
@@ -170,7 +171,7 @@ export function deduplicateCards(cards) {
 
         if (seen.has(key)) {
             const firstCard = seen.get(key);
-            console.log('[Bot Browser] Removing duplicate card:', card.name, 'id:', card.id,
+            logger.log('Removing duplicate card:', card.name, 'id:', card.id,
                        '(keeping first from', firstCard.service || firstCard.sourceService, ')');
         } else {
             seen.set(key, card);
@@ -180,7 +181,7 @@ export function deduplicateCards(cards) {
 
     const removedCount = cards.length - deduplicated.length;
     if (removedCount > 0) {
-        console.log(`[Bot Browser] Removed ${removedCount} duplicate cards, kept ${deduplicated.length} unique cards`);
+        logger.log(`Removed ${removedCount} duplicate cards, kept ${deduplicated.length} unique cards`);
     }
 
     return deduplicated;
@@ -222,7 +223,7 @@ function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExi
             if (!exists && (status === 404 || status === 410 || status === 403)) {
                 const message = status === 403 ? 'Image Restricted' : 'Image Removed';
                 showImageError(imageDiv, message, originalUrl);
-                console.log(`[Bot Browser] Image ${status} (removed/restricted):`, originalUrl);
+                logger.log(`Image ${status} (removed/restricted):`, originalUrl);
                 return;
             }
             // Image exists or we can't tell, try proxies
@@ -252,9 +253,9 @@ function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExi
             const objectUrl = URL.createObjectURL(blob);
             imageDiv.dataset.objectUrl = objectUrl;
             imageDiv.style.backgroundImage = `url('${objectUrl}')`;
-            console.log(`[Bot Browser] Image loaded via ${proxyType}:`, originalUrl);
+            logger.log(`Image loaded via ${proxyType}:`, originalUrl);
         }).catch(() => {
-            console.log(`[Bot Browser] ${proxyType} failed for:`, originalUrl);
+            logger.log(`${proxyType} failed for:`, originalUrl);
             tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
         });
         return;
@@ -275,7 +276,7 @@ function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExi
     const tryNextProxy = () => {
         if (timeoutId) clearTimeout(timeoutId);
         timeoutId = null;
-        console.log(`[Bot Browser] ${proxyType} failed for:`, originalUrl);
+        logger.log(`${proxyType} failed for:`, originalUrl);
         tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
     };
 
@@ -283,7 +284,7 @@ function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExi
         if (timeoutId) clearTimeout(timeoutId);
         timeoutId = null;
         imageDiv.style.backgroundImage = `url('${proxyUrl}')`;
-        console.log(`[Bot Browser] Image loaded via ${proxyType}:`, originalUrl);
+        logger.log(`Image loaded via ${proxyType}:`, originalUrl);
     };
 
     testImg.onerror = tryNextProxy;
@@ -318,7 +319,7 @@ function getImageObserver() {
 
                             testImg.onerror = () => {
                                 // Image failed to load - try with CORS proxy
-                                console.log('[Bot Browser] Image failed, trying proxies:', imageUrl);
+                                logger.log('Image failed, trying proxies:', imageUrl);
                                 tryLoadImageWithProxy(imageDiv, imageUrl, 0);
                             };
 
@@ -379,7 +380,7 @@ function showImageError(imageDiv, errorCode, imageUrl, silent = false) {
     }
 
     if (!silent) {
-        console.log(`[Bot Browser] Showing fallback for card with failed image (${errorCode}):`, imageUrl);
+        logger.log(`Showing fallback for card with failed image (${errorCode}):`, imageUrl);
     }
 }
 
@@ -426,10 +427,10 @@ export async function getRandomCard(source, currentCards, loadServiceIndexFunc) 
         const randomIndex = Math.floor(Math.random() * cards.length);
         const randomCard = cards[randomIndex];
 
-        console.log('[Bot Browser] Selected random card:', randomCard.name);
+        logger.log('Selected random card:', randomCard.name);
         return randomCard;
     } catch (error) {
-        console.error('[Bot Browser] Error getting random card:', error);
+        logger.error('Error getting random card:', error);
         toastr.error('Failed to get random card');
         return null;
     }

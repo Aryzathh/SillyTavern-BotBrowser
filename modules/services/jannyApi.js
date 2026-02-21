@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 import { proxiedFetch, getAuthHeadersForService } from './corsProxy.js';
 
 const JANNY_SEARCH_URL = 'https://search.jannyai.com/multi-search';
@@ -53,7 +54,7 @@ async function getSearchToken() {
                 if (!searchPageMatch) {
                     // Debug: log what scripts we found
                     const allScripts = pageHtml.match(/\/_astro\/[^"'\s]+\.js/g) || [];
-                    if (DEBUG) console.log('[Bot Browser] Available scripts:', allScripts.slice(0, 10));
+                    if (DEBUG) logger.log('Available scripts:', allScripts.slice(0, 10));
                     throw new Error('Could not find client-config or SearchPage JS file');
                 }
 
@@ -100,10 +101,10 @@ async function getSearchToken() {
             }
 
             cachedToken = tokenMatch[1];
-            if (DEBUG) console.log('[Bot Browser] Fetched fresh JannyAI search token');
+            if (DEBUG) logger.log('Fetched fresh JannyAI search token');
             return cachedToken;
         } catch (error) {
-            console.warn('[Bot Browser] Failed to fetch JannyAI token, using fallback:', error.message);
+            logger.warn('Failed to fetch JannyAI token, using fallback:', error.message);
             cachedToken = JANNY_FALLBACK_TOKEN;
             return cachedToken;
         } finally {
@@ -178,7 +179,7 @@ export async function searchJannyCharacters(options = {}) {
         }]
     };
 
-    if (DEBUG) console.log('[Bot Browser] JannyAI search request:', requestBody);
+    if (DEBUG) logger.log('JannyAI search request:', requestBody);
 
     const baseHeaders = {
         'Accept': '*/*',
@@ -219,7 +220,7 @@ export async function searchJannyCharacters(options = {}) {
     }
 
     const data = await response.json();
-    if (DEBUG) console.log('[Bot Browser] JannyAI search response:', data);
+    if (DEBUG) logger.log('JannyAI search response:', data);
     return data;
 }
 
@@ -232,7 +233,7 @@ export async function searchJannyCharacters(options = {}) {
 export async function fetchJannyCharacterDetails(characterId, slug) {
     const characterUrl = `https://jannyai.com/characters/${characterId}_${slug}`;
 
-    if (DEBUG) console.log('[Bot Browser] Fetching JannyAI character:', characterUrl);
+    if (DEBUG) logger.log('Fetching JannyAI character:', characterUrl);
 
     const response = await proxiedFetch(characterUrl, {
         service: 'jannyai',
@@ -278,7 +279,7 @@ function parseAstroCharacterProps(html) {
     try {
         propsJson = JSON.parse(propsDecoded);
     } catch (e) {
-        console.error('[Bot Browser] Failed to parse JannyAI props:', e);
+        logger.error('Failed to parse JannyAI props:', e);
         throw new Error('Failed to parse character data from JannyAI page');
     }
 

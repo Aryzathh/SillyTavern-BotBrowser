@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // CORS Proxy Module for Bot Browser
 // Provides modular CORS proxy support with fallbacks and Puter.js integration
 
@@ -95,11 +96,11 @@ function isPuterEnabled() {
 }
 
 function debugLog(...args) {
-    if (isDebugEnabled()) console.log(...args);
+    if (isDebugEnabled()) logger.log(...args);
 }
 
 function debugWarn(...args) {
-    if (isDebugEnabled()) console.warn(...args);
+    if (isDebugEnabled()) logger.warn(...args);
 }
 
 function headersToObject(headers) {

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 const CHUB_API_BASE = 'https://api.chub.ai';
 import { proxiedFetch } from './corsProxy.js';
 
@@ -78,7 +79,7 @@ export async function searchChubCards(options = {}) {
     }
 
     const data = await response.json();
-    if (DEBUG) console.log('[Bot Browser] Chub API response data:', data);
+    if (DEBUG) logger.log('Chub API response data:', data);
     return data;
 }
 
@@ -108,7 +109,7 @@ export async function getChubCharacter(fullPath) {
     }
 
     const data = await response.json();
-    if (DEBUG) console.log('[Bot Browser] Gateway API response for', fullPath, data);
+    if (DEBUG) logger.log('Gateway API response for', fullPath, data);
     return data;
 }
 
@@ -177,7 +178,7 @@ export function transformFullChubCharacter(charData) {
     // Character name
     const cardName = def.name || node.name || 'Unknown';
 
-    if (DEBUG) console.log('[Bot Browser] Chub field extraction:', {
+    if (DEBUG) logger.log('Chub field extraction:', {
         cardName,
         tagline: node.tagline?.substring(0, 100),
         personalityLength: (def.personality || '').length,
@@ -297,7 +298,7 @@ export async function searchChubLorebooks(options = {}) {
         params.append('username', options.username);
     }
 
-    console.log('[Bot Browser] Fetching Chub lorebooks:', `${CHUB_GATEWAY_BASE}/search?${params}`);
+    logger.log('Fetching Chub lorebooks:', `${CHUB_GATEWAY_BASE}/search?${params}`);
 
     const response = await proxiedFetch(`${CHUB_GATEWAY_BASE}/search?${params}`, {
         service: 'chub_gateway',
@@ -316,7 +317,7 @@ export async function searchChubLorebooks(options = {}) {
     }
 
     const data = await response.json();
-    console.log('[Bot Browser] Chub Lorebooks API response:', data);
+    logger.log('Chub Lorebooks API response:', data);
     return data;
 }
 
@@ -353,7 +354,7 @@ export async function getChubLorebook(nodeId) {
 
         return await response.json();
     } catch (error) {
-        console.warn('[Bot Browser] Lorebook fetch error:', nodeId);
+        logger.warn('Lorebook fetch error:', nodeId);
         throw error;
     }
 }

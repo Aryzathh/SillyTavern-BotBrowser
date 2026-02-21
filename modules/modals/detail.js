@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 import { loadCardChunk } from '../services/cache.js';
 import { addToRecentlyViewed, isBookmarked, addBookmark, removeBookmark } from '../storage/storage.js';
 import { buildDetailModalHTML } from '../templates/detailModal.js';
@@ -37,7 +38,7 @@ function findCharacterByName(name) {
 
 export async function showCardDetail(card, extensionName, extension_settings, state, save=true, isRandom=false) {
     if (isOpeningModal) {
-        console.log('[Bot Browser] Modal already opening, ignoring duplicate click');
+        logger.log('Modal already opening, ignoring duplicate click');
         return;
     }
     isOpeningModal = true;
@@ -48,14 +49,14 @@ export async function showCardDetail(card, extensionName, extension_settings, st
         const clickedName = (card.name || '').trim().toLowerCase();
         const loadedName = (fullCard.name || '').trim().toLowerCase();
         if (clickedName && loadedName && clickedName !== loadedName) {
-            console.warn('[Bot Browser] Card name mismatch - clicked:', card.name, 'but loaded:', fullCard.name);
+            logger.warn('Card name mismatch - clicked:', card.name, 'but loaded:', fullCard.name);
             // Don't show error toast - this can happen with minor formatting differences
         }
 
         state.selectedCard = fullCard;
 
         // Log service properties for debugging creator click warnings
-        console.log('[Bot Browser] Detail modal selectedCard set:', {
+        logger.log('Detail modal selectedCard set:', {
             name: fullCard?.name,
             service: fullCard?.service,
             sourceService: fullCard?.sourceService,
@@ -77,7 +78,7 @@ export async function showCardDetail(card, extensionName, extension_settings, st
 
         isOpeningModal = false;
     } catch (error) {
-        console.error('[Bot Browser] Error showing card detail:', error);
+        logger.error('Error showing card detail:', error);
         isOpeningModal = false;
         throw error;
     }
@@ -96,32 +97,32 @@ async function loadFullCard(card) {
 
     if (card.isLiveChub && card.isLorebook && card.nodeId) {
         try {
-            console.log('[Bot Browser] Fetching full Chub lorebook data for:', card.fullPath, 'nodeId:', card.nodeId);
+            logger.log('Fetching full Chub lorebook data for:', card.fullPath, 'nodeId:', card.nodeId);
             const lorebookData = await getChubLorebook(card.nodeId);
             if (lorebookData) {
                 // The lorebook data should have entries in SillyTavern format
                 // Preserve the original card's display name (search results name), but take entries from lorebookData
                 fullCard = { ...card, ...lorebookData, name: card.name };
-                console.log('[Bot Browser] Loaded full Chub lorebook data:', fullCard.name, 'entries:', Object.keys(lorebookData.entries || {}).length);
+                logger.log('Loaded full Chub lorebook data:', fullCard.name, 'entries:', Object.keys(lorebookData.entries || {}).length);
                 return fullCard;
             } else {
-                console.log('[Bot Browser] Lorebook data unavailable (private/deleted)');
+                logger.log('Lorebook data unavailable (private/deleted)');
             }
         } catch (error) {
-            console.error('[Bot Browser] Failed to load full Chub lorebook:', error);
+            logger.error('Failed to load full Chub lorebook:', error);
             // Fall through to return original card data
         }
     }
     else if (looksLikeChubCard && chubFullPath && !card.isLorebook) {
         try {
-            console.log('[Bot Browser] Fetching full Chub character data for:', chubFullPath);
+            logger.log('Fetching full Chub character data for:', chubFullPath);
             const charData = await getChubCharacter(chubFullPath);
             const fullData = transformFullChubCharacter(charData);
             fullCard = { ...card, ...fullData, isLiveChub: true, fullPath: chubFullPath };
-            console.log('[Bot Browser] Loaded full Chub character data:', fullCard.name);
+            logger.log('Loaded full Chub character data:', fullCard.name);
             return fullCard;
         } catch (error) {
-            console.error('[Bot Browser] Failed to load full Chub character:', error);
+            logger.error('Failed to load full Chub character:', error);
             // Fall through to return original card data
         }
     }
@@ -132,14 +133,14 @@ async function loadFullCard(card) {
 
     if (looksLikeJannyCard && card.id && card.slug) {
         try {
-            console.log('[Bot Browser] Fetching full JannyAI character data for:', card.id);
+            logger.log('Fetching full JannyAI character data for:', card.id);
             const jannyData = await fetchJannyCharacterDetails(card.id, card.slug);
             const fullData = transformFullJannyCharacter(jannyData);
             fullCard = { ...card, ...fullData, isJannyAI: true };
-            console.log('[Bot Browser] Loaded full JannyAI character data:', fullCard.name);
+            logger.log('Loaded full JannyAI character data:', fullCard.name);
             return fullCard;
         } catch (error) {
-            console.error('[Bot Browser] Failed to load full JannyAI character:', error);
+            logger.error('Failed to load full JannyAI character:', error);
             // Fall through to return original card data
         }
     }
@@ -151,14 +152,14 @@ async function loadFullCard(card) {
 
     if (looksLikeRisuRealmCard && card.id && card.isLiveApi) {
         try {
-            console.log('[Bot Browser] Fetching full RisuRealm character data for:', card.id);
+            logger.log('Fetching full RisuRealm character data for:', card.id);
             const risuData = await fetchRisuRealmCharacter(card.id);
             const fullData = transformFullRisuRealmCharacter(risuData);
             fullCard = { ...card, ...fullData, isRisuRealm: true };
-            console.log('[Bot Browser] Loaded full RisuRealm character data:', fullCard.name);
+            logger.log('Loaded full RisuRealm character data:', fullCard.name);
             return fullCard;
         } catch (error) {
-            console.error('[Bot Browser] Failed to load full RisuRealm character:', error);
+            logger.error('Failed to load full RisuRealm character:', error);
             // Fall through to return original card data
         }
     }
@@ -171,7 +172,7 @@ async function loadFullCard(card) {
 
     if (looksLikeBackyardCard && card.id && card.isLiveApi) {
         try {
-            console.log('[Bot Browser] Fetching full Backyard.ai character data for:', card.id);
+            logger.log('Fetching full Backyard.ai character data for:', card.id);
             const backyardData = await getBackyardCharacter(card.id);
             const fullData = transformFullBackyardCharacter(backyardData);
             // Preserve original card data if full data is empty
@@ -185,10 +186,10 @@ async function loadFullCard(card) {
                 description: fullData.description || card.description,
                 isBackyard: true
             };
-            console.log('[Bot Browser] Loaded full Backyard.ai character data:', fullCard.name);
+            logger.log('Loaded full Backyard.ai character data:', fullCard.name);
             return fullCard;
         } catch (error) {
-            console.error('[Bot Browser] Failed to load full Backyard.ai character:', error);
+            logger.error('Failed to load full Backyard.ai character:', error);
             // Fall through to return original card data
         }
     }
@@ -201,7 +202,7 @@ async function loadFullCard(card) {
 
     if (looksLikePygmalionCard && card.id && card.isLiveApi) {
         try {
-            console.log('[Bot Browser] Fetching full Pygmalion character data for:', card.id);
+            logger.log('Fetching full Pygmalion character data for:', card.id);
             const pygmalionData = await getPygmalionCharacter(card.id);
             const fullData = transformFullPygmalionCharacter(pygmalionData);
             // Preserve original card data if full data is empty
@@ -215,10 +216,10 @@ async function loadFullCard(card) {
                 description: fullData.description || card.description,
                 isPygmalion: true
             };
-            console.log('[Bot Browser] Loaded full Pygmalion character data:', fullCard.name);
+            logger.log('Loaded full Pygmalion character data:', fullCard.name);
             return fullCard;
         } catch (error) {
-            console.error('[Bot Browser] Failed to load full Pygmalion character:', error);
+            logger.error('Failed to load full Pygmalion character:', error);
             // Fall through to return original card data
         }
     }
@@ -494,9 +495,9 @@ function setupDetailModalEvents(detailModal, detailOverlay, fullCard, state) {
 
                     // Select the character in SillyTavern
                     await selectCharacterById(parseInt(characterIndex, 10));
-                    console.log('[Bot Browser] Opened chat with character:', fullCard.name);
+                    logger.log('Opened chat with character:', fullCard.name);
                 } catch (error) {
-                    console.error('[Bot Browser] Failed to open character:', error);
+                    logger.error('Failed to open character:', error);
                     toastr.error('Failed to open character chat', 'Error');
                     // Still reset pointer events on error
                     document.body.style.pointerEvents = '';
@@ -541,7 +542,7 @@ function tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedE
             if (!exists && (status === 404 || status === 410 || status === 403)) {
                 const message = status === 403 ? 'Image Restricted' : 'Image Removed';
                 showDetailImageError(imageDiv, message, originalUrl);
-                console.log(`[Bot Browser] Detail image ${status} (removed/restricted):`, originalUrl);
+                logger.log(`Detail image ${status} (removed/restricted):`, originalUrl);
                 return;
             }
             // Image exists or we can't tell, try proxies
@@ -572,9 +573,9 @@ function tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedE
             imageDiv.dataset.objectUrl = objectUrl;
             imageDiv.style.backgroundImage = `url('${objectUrl}')`;
             imageDiv.setAttribute('data-image-url', objectUrl);
-            console.log(`[Bot Browser] Detail image loaded via ${proxyType}:`, originalUrl);
+            logger.log(`Detail image loaded via ${proxyType}:`, originalUrl);
         }).catch(() => {
-            console.log(`[Bot Browser] Detail image ${proxyType} failed for:`, originalUrl);
+            logger.log(`Detail image ${proxyType} failed for:`, originalUrl);
             tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
         });
         return;
@@ -594,12 +595,12 @@ function tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedE
         // Proxy worked! Update the image
         imageDiv.style.backgroundImage = `url('${proxyUrl}')`;
         imageDiv.setAttribute('data-image-url', proxyUrl);
-        console.log(`[Bot Browser] Detail image loaded via ${proxyType}:`, originalUrl);
+        logger.log(`Detail image loaded via ${proxyType}:`, originalUrl);
     };
 
     testImg.onerror = () => {
         // This proxy failed, try next
-        console.log(`[Bot Browser] Detail image ${proxyType} failed for:`, originalUrl);
+        logger.log(`Detail image ${proxyType} failed for:`, originalUrl);
         tryDetailImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
     };
 
@@ -629,7 +630,7 @@ function validateDetailModalImage(detailModal, card) {
 
     testImg.onerror = () => {
         // Image failed to load - try with CORS proxy
-        console.log('[Bot Browser] Detail image failed, trying proxies:', imageUrl);
+        logger.log('Detail image failed, trying proxies:', imageUrl);
         tryDetailImageWithProxy(imageDiv, imageUrl, 0);
     };
 
@@ -663,7 +664,7 @@ function showDetailImageError(imageDiv, errorCode, imageUrl) {
         </div>
     `;
 
-    console.log(`[Bot Browser] Detail modal image failed to load (${errorCode}):`, imageUrl);
+    logger.log(`Detail modal image failed to load (${errorCode}):`, imageUrl);
 }
 
 export function closeDetailModal() {
@@ -683,7 +684,7 @@ export function closeDetailModal() {
 
     isOpeningModal = false;
 
-    console.log('[Bot Browser] Card detail modal closed');
+    logger.log('Card detail modal closed');
 }
 
 export function showImageLightbox(imageUrl) {
@@ -755,7 +756,7 @@ export function showImageLightbox(imageUrl) {
             });
 
         img.replaceWith(errorDiv);
-        console.log('[Bot Browser] Image failed to load in lightbox:', imageUrl);
+        logger.log('Image failed to load in lightbox:', imageUrl);
     };
 
     const closeBtn = document.createElement('button');
@@ -793,7 +794,7 @@ export function showImageLightbox(imageUrl) {
         isClosing = true;
 
         lightbox.remove();
-        console.log('[Bot Browser] Image lightbox closed');
+        logger.log('Image lightbox closed');
     };
 
     lightbox.addEventListener('click', (e) => {
@@ -826,5 +827,5 @@ export function showImageLightbox(imageUrl) {
     };
     document.addEventListener('keydown', handleKeyDown);
 
-    console.log('[Bot Browser] Image lightbox opened');
+    logger.log('Image lightbox opened');
 }

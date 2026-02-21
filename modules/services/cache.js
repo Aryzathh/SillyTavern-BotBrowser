@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // Dynamic import for SillyTavern compatibility - fails gracefully in standalone
 let default_avatar = '';
 try { default_avatar = (await import('/script.js')).default_avatar; } catch {}
@@ -28,7 +29,7 @@ export async function loadMasterIndex() {
         loadedData.masterIndex = await response.json();
         return loadedData.masterIndex;
     } catch (error) {
-        console.error('[Bot Browser] Error loading master index:', error);
+        logger.error('Error loading master index:', error);
         toastr.error('Failed to load bot browser data');
         return null;
     }
@@ -84,7 +85,7 @@ export async function loadMoreChubCards(options = {}) {
         if (options.search !== undefined) chubApiState.currentSearch = options.search;
         if (options.sort !== undefined) chubApiState.currentSort = options.sort;
 
-        console.log(`[Bot Browser] Loading Chub page ${chubApiState.currentPage}, search: "${chubApiState.currentSearch}", sort: ${apiSort}`);
+        logger.log(`Loading Chub page ${chubApiState.currentPage}, search: "${chubApiState.currentSearch}", sort: ${apiSort}`);
 
         const result = await searchChubCards({
             limit: 48,
@@ -119,7 +120,7 @@ export async function loadMoreChubCards(options = {}) {
         }
 
         const cards = nodes.map(transformChubCard);
-        console.log(`[Bot Browser] Loaded ${cards.length} cards from Chub API page ${chubApiState.currentPage}`);
+        logger.log(`Loaded ${cards.length} cards from Chub API page ${chubApiState.currentPage}`);
 
         // Check if there are more pages - use cursor if available, otherwise check count
         const hasCursor = result?.data?.cursor != null;
@@ -138,7 +139,7 @@ export async function loadMoreChubCards(options = {}) {
         chubApiState.isLoading = false;
         return cards;
     } catch (error) {
-        console.error('[Bot Browser] Failed to load more Chub cards:', error);
+        logger.error('Failed to load more Chub cards:', error);
         chubApiState.isLoading = false;
         return [];
     }
@@ -181,7 +182,7 @@ export async function loadMoreCharacterTavernCards(options = {}) {
     }
 
     try {
-        console.log(`[Bot Browser] Loading Character Tavern page ${characterTavernApiState.page + 1}`);
+        logger.log(`Loading Character Tavern page ${characterTavernApiState.page + 1}`);
 
         const cards = await searchCharacterTavern({
             query: options.search || '',
@@ -202,7 +203,7 @@ export async function loadMoreCharacterTavernCards(options = {}) {
 
         return cards;
     } catch (error) {
-        console.error('[Bot Browser] Failed to load more Character Tavern cards:', error);
+        logger.error('Failed to load more Character Tavern cards:', error);
         return [];
     }
 }
@@ -236,7 +237,7 @@ export async function loadMoreChubLorebooks(options = {}) {
         if (options.search !== undefined) chubLorebooksApiState.currentSearch = options.search;
         if (options.sort !== undefined) chubLorebooksApiState.currentSort = options.sort;
 
-        console.log(`[Bot Browser] Loading Chub lorebooks page ${chubLorebooksApiState.currentPage}, search: "${chubLorebooksApiState.currentSearch}", sort: ${apiSort}`);
+        logger.log(`Loading Chub lorebooks page ${chubLorebooksApiState.currentPage}, search: "${chubLorebooksApiState.currentSearch}", sort: ${apiSort}`);
 
         const result = await searchChubLorebooks({
             limit: 48,
@@ -263,7 +264,7 @@ export async function loadMoreChubLorebooks(options = {}) {
         }
 
         const lorebooks = nodes.map(transformChubLorebook);
-        console.log(`[Bot Browser] Loaded ${lorebooks.length} lorebooks from Chub API page ${chubLorebooksApiState.currentPage}`);
+        logger.log(`Loaded ${lorebooks.length} lorebooks from Chub API page ${chubLorebooksApiState.currentPage}`);
 
         // Check if there are more pages
         if (lorebooks.length < 48) {
@@ -281,7 +282,7 @@ export async function loadMoreChubLorebooks(options = {}) {
         chubLorebooksApiState.isLoading = false;
         return lorebooks;
     } catch (error) {
-        console.error('[Bot Browser] Failed to load more Chub lorebooks:', error);
+        logger.error('Failed to load more Chub lorebooks:', error);
         chubLorebooksApiState.isLoading = false;
         return [];
     }
@@ -308,7 +309,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
             const lorebooks = await loadMoreChubLorebooks(options);
             return lorebooks;
         } catch (error) {
-            console.error('[Bot Browser] Chub Lorebooks API failed:', error);
+            logger.error('Chub Lorebooks API failed:', error);
             // Fall through to archive method below
         }
     }
@@ -327,8 +328,8 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
             const cards = await loadMoreChubCards(options);
             return cards;
         } catch (error) {
-            console.error('[Bot Browser] Chub API failed:', error);
-            console.error('[Bot Browser] Error stack:', error.stack);
+            logger.error('Chub API failed:', error);
+            logger.error('Error stack:', error.stack);
             // Fall through to archive method below
         }
     }
@@ -339,7 +340,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
         delete loadedData.serviceIndexes['character_tavern_live'];
 
         try {
-            console.log('[Bot Browser] Loading Character Tavern via live API');
+            logger.log('Loading Character Tavern via live API');
             const cards = await searchCharacterTavern({
                 query: options.search || '',
                 page: 1,
@@ -353,7 +354,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
             loadedData.serviceIndexes['character_tavern_live'] = cards;
             return cards;
         } catch (error) {
-            console.error('[Bot Browser] Character Tavern API failed:', error);
+            logger.error('Character Tavern API failed:', error);
             // Fall through to archive method below
         }
     }
@@ -364,12 +365,12 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
         delete loadedData.serviceIndexes['mlpchag_live'];
 
         try {
-            console.log('[Bot Browser] Loading MLPChag via live API');
+            logger.log('Loading MLPChag via live API');
             const cards = await loadMlpchagLive();
             loadedData.serviceIndexes['mlpchag_live'] = cards;
             return cards;
         } catch (error) {
-            console.error('[Bot Browser] MLPChag API failed:', error);
+            logger.error('MLPChag API failed:', error);
             // Fall through to archive method below
         }
     }
@@ -380,7 +381,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
         delete loadedData.serviceIndexes['wyvern_live'];
 
         try {
-            console.log('[Bot Browser] Loading Wyvern via live API');
+            logger.log('Loading Wyvern via live API');
             const cards = await loadWyvernCharacters({
                 sort: options.sort || 'votes',
                 order: options.order || 'DESC',
@@ -392,7 +393,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
             loadedData.serviceIndexes['wyvern_live'] = cards;
             return cards;
         } catch (error) {
-            console.error('[Bot Browser] Wyvern API failed:', error);
+            logger.error('Wyvern API failed:', error);
             // Fall through to return empty (no archive for Wyvern)
             return [];
         }
@@ -404,7 +405,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
         delete loadedData.serviceIndexes['wyvern_lorebooks_live'];
 
         try {
-            console.log('[Bot Browser] Loading Wyvern Lorebooks via live API');
+            logger.log('Loading Wyvern Lorebooks via live API');
             const lorebooks = await loadWyvernLorebooks({
                 sort: options.sort || 'created_at',
                 order: options.order || 'DESC',
@@ -416,7 +417,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
             loadedData.serviceIndexes['wyvern_lorebooks_live'] = lorebooks;
             return lorebooks;
         } catch (error) {
-            console.error('[Bot Browser] Wyvern Lorebooks API failed:', error);
+            logger.error('Wyvern Lorebooks API failed:', error);
             return [];
         }
     }
@@ -429,14 +430,14 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
     try {
         const response = await fetch(`${baseUrl}/index/${serviceName}-search.json`);
         if (!response.ok) {
-            console.warn(`[Bot Browser] ${serviceName} index not found (${response.status})`);
+            logger.warn(`${serviceName} index not found (${response.status})`);
             loadedData.serviceIndexes[serviceName] = [];
             return [];
         }
 
         const text = await response.text();
         if (!text || text.trim().length === 0) {
-            console.warn(`[Bot Browser] ${serviceName} index is empty`);
+            logger.warn(`${serviceName} index is empty`);
             loadedData.serviceIndexes[serviceName] = [];
             return [];
         }
@@ -452,7 +453,7 @@ export async function loadServiceIndex(serviceName, useLiveApi = false, options 
         loadedData.serviceIndexes[serviceName] = items;
         return items;
     } catch (error) {
-        console.error(`[Bot Browser] Error loading ${serviceName} index:`, error);
+        logger.error(`Error loading ${serviceName} index:`, error);
         loadedData.serviceIndexes[serviceName] = [];
         return [];
     }
@@ -491,7 +492,7 @@ export async function loadCardChunk(service, chunkFile) {
         loadedData.loadedChunks[chunkKey] = data;
         return data;
     } catch (error) {
-        console.error(`[Bot Browser] Error loading chunk ${chunkKey}:`, error);
+        logger.error(`Error loading chunk ${chunkKey}:`, error);
         return [];
     }
 }
@@ -589,7 +590,7 @@ export async function initializeServiceCache(showCardDetailFunc) {
             }
         }
     } catch (error) {
-        console.error('[Bot Browser] Service cache initialization failed:', error);
+        logger.error('Service cache initialization failed:', error);
     }
 }
 
@@ -622,7 +623,7 @@ export async function loadMoreWyvernCards(options = {}) {
     }
 
     try {
-        console.log(`[Bot Browser] Loading Wyvern page ${wyvernApiState.page + 1}`);
+        logger.log(`Loading Wyvern page ${wyvernApiState.page + 1}`);
 
         const cards = await loadMoreWyvernCharacters({
             sort: options.sort || wyvernApiState.lastSort,
@@ -640,7 +641,7 @@ export async function loadMoreWyvernCards(options = {}) {
 
         return cards;
     } catch (error) {
-        console.error('[Bot Browser] Failed to load more Wyvern cards:', error);
+        logger.error('Failed to load more Wyvern cards:', error);
         return [];
     }
 }
@@ -654,7 +655,7 @@ export async function loadMoreWyvernLorebooksWrapper(options = {}) {
     }
 
     try {
-        console.log(`[Bot Browser] Loading Wyvern Lorebooks page ${wyvernLorebooksApiState.page + 1}`);
+        logger.log(`Loading Wyvern Lorebooks page ${wyvernLorebooksApiState.page + 1}`);
 
         const lorebooks = await loadMoreWyvernLorebooks({
             sort: options.sort || wyvernLorebooksApiState.lastSort,
@@ -671,7 +672,7 @@ export async function loadMoreWyvernLorebooksWrapper(options = {}) {
 
         return lorebooks;
     } catch (error) {
-        console.error('[Bot Browser] Failed to load more Wyvern lorebooks:', error);
+        logger.error('Failed to load more Wyvern lorebooks:', error);
         return [];
     }
 }

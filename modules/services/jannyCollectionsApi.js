@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // JannyAI Collections API - fetches and parses collections via CORS proxy
 import { proxiedFetch } from './corsProxy.js';
 
@@ -17,7 +18,7 @@ export async function fetchJannyCollections(options = {}) {
 
     const url = `${JANNY_COLLECTIONS_URL}?sort=${sort}&page=${page}`;
 
-    console.log('[Bot Browser] Fetching JannyAI collections:', url);
+    logger.log('Fetching JannyAI collections:', url);
 
     const response = await proxiedFetch(url, {
         service: 'jannyai',
@@ -140,7 +141,7 @@ function parseCollectionsPage(html, currentPage, sort) {
         });
     }
 
-    console.log(`[Bot Browser] Parsed ${collections.length} collections from page ${currentPage}`);
+    logger.log(`Parsed ${collections.length} collections from page ${currentPage}`);
 
     return {
         collections,
@@ -195,7 +196,7 @@ function findCollectionSection(html, fullPath) {
 export async function fetchJannyCollectionDetails(collectionId, slug) {
     const url = `https://jannyai.com/collections/${collectionId}_${slug}`;
 
-    console.log('[Bot Browser] Fetching JannyAI collection details:', url);
+    logger.log('Fetching JannyAI collection details:', url);
 
     const response = await proxiedFetch(url, {
         service: 'jannyai',
@@ -298,7 +299,7 @@ function parseCollectionDetailsPage(html, collectionId, slug) {
         });
     }
 
-    console.log(`[Bot Browser] Parsed ${characters.length} characters from collection`);
+    logger.log(`Parsed ${characters.length} characters from collection`);
 
     return {
         id: collectionId,

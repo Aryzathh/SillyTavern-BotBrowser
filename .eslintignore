@@ -1,0 +1,5 @@
+node_modules/
+old_browser.tmp.js
+browser-standalone.js
+lib/
+*min.js

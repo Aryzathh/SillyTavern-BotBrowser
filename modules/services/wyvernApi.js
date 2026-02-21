@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 // Wyvern Chat API Service
 // API: https://api.wyvern.chat/exploreSearch/characters
 // Lorebooks: https://api.wyvern.chat/exploreSearch/lorebooks
@@ -105,7 +106,7 @@ export async function searchWyvernCharacters(options = {}) {
         }
 
         const url = `${WYVERN_API_BASE}/characters?${params.toString()}`;
-        console.log('[Bot Browser] Wyvern API request:', url);
+        logger.log('Wyvern API request:', url);
 
         const response = await proxiedFetch(url, {
             service: 'wyvern',
@@ -130,7 +131,7 @@ export async function searchWyvernCharacters(options = {}) {
         wyvernApiState.lastOrder = order;
         wyvernApiState.isLoading = false;
 
-        console.log(`[Bot Browser] Wyvern API returned ${data.results?.length || 0} characters (page ${data.page}/${data.totalPages}, total: ${data.total})`);
+        logger.log(`Wyvern API returned ${data.results?.length || 0} characters (page ${data.page}/${data.totalPages}, total: ${data.total})`);
 
         return {
             results: data.results || [],
@@ -141,7 +142,7 @@ export async function searchWyvernCharacters(options = {}) {
         };
     } catch (error) {
         wyvernApiState.isLoading = false;
-        console.error('[Bot Browser] Wyvern API error:', error);
+        logger.error('Wyvern API error:', error);
         throw error;
     }
 }
@@ -182,7 +183,7 @@ export async function searchWyvernLorebooks(options = {}) {
         }
 
         const url = `${WYVERN_API_BASE}/lorebooks?${params.toString()}`;
-        console.log('[Bot Browser] Wyvern Lorebooks API request:', url);
+        logger.log('Wyvern Lorebooks API request:', url);
 
         const response = await proxiedFetch(url, {
             service: 'wyvern',
@@ -206,7 +207,7 @@ export async function searchWyvernLorebooks(options = {}) {
         wyvernLorebooksApiState.lastOrder = order;
         wyvernLorebooksApiState.isLoading = false;
 
-        console.log(`[Bot Browser] Wyvern Lorebooks API returned ${data.results?.length || 0} lorebooks (page ${data.page}/${data.totalPages})`);
+        logger.log(`Wyvern Lorebooks API returned ${data.results?.length || 0} lorebooks (page ${data.page}/${data.totalPages})`);
 
         return {
             results: data.results || [],
@@ -217,7 +218,7 @@ export async function searchWyvernLorebooks(options = {}) {
         };
     } catch (error) {
         wyvernLorebooksApiState.isLoading = false;
-        console.error('[Bot Browser] Wyvern Lorebooks API error:', error);
+        logger.error('Wyvern Lorebooks API error:', error);
         throw error;
     }
 }
@@ -266,7 +267,7 @@ export function transformWyvernCard(node) {
     const postHistoryInstructions = node.post_history_instructions || '';
 
     // Debug logging
-    console.log(`[Bot Browser] transformWyvernCard for "${node.name}":`, {
+    logger.log(`transformWyvernCard for "${node.name}":`, {
         'description (char def)': charDescription?.substring(0, 80),
         'first_mes': firstMessage?.substring(0, 80),
         'scenario': scenario?.substring(0, 80),
@@ -491,7 +492,7 @@ export async function fetchWyvernCreatorCards(options = {}) {
         params.set('limit', limit.toString());
 
         const url = `https://api.wyvern.chat/characters/user/${uid}?${params.toString()}`;
-        console.log('[Bot Browser] Wyvern Creator API request:', url);
+        logger.log('Wyvern Creator API request:', url);
 
         const response = await proxiedFetch(url, {
             service: 'wyvern',
@@ -508,7 +509,7 @@ export async function fetchWyvernCreatorCards(options = {}) {
 
         const data = await response.json();
 
-        console.log(`[Bot Browser] Wyvern Creator API returned ${data.characters?.length || 0} characters`);
+        logger.log(`Wyvern Creator API returned ${data.characters?.length || 0} characters`);
 
         return {
             cards: (data.characters || []).map(transformWyvernCard),
@@ -516,7 +517,7 @@ export async function fetchWyvernCreatorCards(options = {}) {
             hasMore: (data.characters || []).length >= limit
         };
     } catch (error) {
-        console.error('[Bot Browser] Wyvern Creator API error:', error);
+        logger.error('Wyvern Creator API error:', error);
         throw error;
     }
 }

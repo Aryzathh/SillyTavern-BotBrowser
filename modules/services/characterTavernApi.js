@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger.js';
 /**
  * Character Tavern API Service
  * Live API for searching and importing characters from character-tavern.com
@@ -52,7 +53,7 @@ export async function searchCharacterTavern(options = {}) {
         if (tags.length > 0) params.set('tags', tags.join(','));
 
         const url = `${CT_API_BASE}?${params}`;
-        console.log('[Bot Browser] Character Tavern API request:', url);
+        logger.log('Character Tavern API request:', url);
 
         const response = await proxiedFetch(url, {
             service: 'character_tavern',
@@ -76,7 +77,7 @@ export async function searchCharacterTavern(options = {}) {
         characterTavernApiState.totalHits = data.totalHits || 0;
         characterTavernApiState.lastSearch = query;
 
-        console.log('[Bot Browser] Character Tavern API response:', {
+        logger.log('Character Tavern API response:', {
             hits: data.hits?.length || 0,
             totalHits: data.totalHits,
             page: data.page,
@@ -85,7 +86,7 @@ export async function searchCharacterTavern(options = {}) {
 
         return (data.hits || []).map(transformCharacterTavernCard);
     } catch (error) {
-        console.error('[Bot Browser] Character Tavern API error:', error);
+        logger.error('Character Tavern API error:', error);
         throw error;
     } finally {
         characterTavernApiState.isLoading = false;
