@@ -1187,11 +1187,13 @@ body .bot-browser-detail-modal {
 .bot-browser-pagination-input::-webkit-inner-spin-button,
 .bot-browser-pagination-input::-webkit-outer-spin-button {
   -webkit-appearance: none;
+  appearance: none;
   margin: 0;
 }
 
 .bot-browser-pagination-input[type="number"] {
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .bot-browser-card-thumbnail {
@@ -2739,6 +2741,7 @@ body #bot-browser-settings-modal,
   background: rgba(255, 255, 255, 0.1);
   outline: none;
   -webkit-appearance: none;
+  appearance: none;
 }
 
 .bot-browser-slider::-webkit-slider-thumb {
@@ -3894,6 +3897,7 @@ body #bot-browser-settings-modal,
   line-height: 1.3;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -3927,6 +3931,7 @@ body #bot-browser-settings-modal,
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin-top: 4px;

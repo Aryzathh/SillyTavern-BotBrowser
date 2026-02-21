@@ -2023,26 +2023,31 @@ async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailF
             jannyTrendingState.page++;
             const result = await fetchJannyTrending({ page: jannyTrendingState.page, limit: 40 });
             newCards = (result.characters || []).map(transformJannyTrendingCard);
+            jannyTrendingState.hasMore = newCards.length >= 40;
             
         } else if (state.isChubTrending) {
             chubTrendingState.page++;
             const result = await fetchChubTrending({ page: chubTrendingState.page, limit: 48, nsfw: !extension_settings[extensionName].hideNsfw });
             newCards = (result.nodes || []).map(transformChubTrendingCard);
+            chubTrendingState.hasMore = newCards.length >= 48;
             
         } else if (state.isWyvernTrending) {
             wyvernTrendingState.page++;
             const result = await fetchWyvernTrending({ page: wyvernTrendingState.page, limit: 40, nsfw: !extension_settings[extensionName].hideNsfw });
             newCards = result.cards.map(transformWyvernTrendingCard);
+            wyvernTrendingState.hasMore = newCards.length >= 40;
             
         } else if (state.isRisuRealmTrending) {
             risuRealmApiState.page++;
             const result = await fetchRisuRealmTrending({ page: risuRealmApiState.page, limit: 50 });
             newCards = result.characters.map(transformRisuRealmCard);
+            risuRealmApiState.hasMore = newCards.length >= 50;
             
         } else if (state.isBackyardTrending) {
             backyardTrendingState.page++;
             const result = await fetchBackyardTrending({ page: backyardTrendingState.page, limit: 20 });
             newCards = result.characters.map(transformBackyardTrendingCard);
+            backyardTrendingState.hasMore = newCards.length >= 20;
             
         } else if (state.isPygmalionTrending) {
             pygmalionApiState.page++;
