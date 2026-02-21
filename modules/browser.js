@@ -1809,62 +1809,47 @@ function setupCustomDropdown(container, state, filterType, extensionName, extens
 
 
 
-function renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+// --- Infinite Scrolling ---
+let infiniteScrollObserver = null;
+let isInfiniteLoading = false;
+
+function renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings, isAppend = false) {
     const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
     if (!gridContainer) return;
 
     const cardsPerPage = extension_settings[extensionName].cardsPerPage || 200;
 
-    // Calculate which cards to show
-    const startIndex = (state.currentPage - 1) * cardsPerPage;
-    const endIndex = startIndex + cardsPerPage;
-    const pageCards = state.filteredCards.slice(startIndex, endIndex);
-
-    // Create HTML for page cards
-    const cardsHTML = pageCards.map(card => createCardHTML(card)).join('');
-
-    // Create pagination HTML - for live APIs (Chub/JannyAI/CT/Wyvern) and trending, don't show total pages
-    const chubApiState = state.isLorebooks ? getChubLorebooksApiState() : getChubApiState();
-    const ctApiState = getCharacterTavernApiState();
-    const wyvernApiState = state.isWyvernLorebooks ? getWyvernLorebooksApiState() : getWyvernApiState();
-
-    let paginationHTML;
-    if (state.isJannyAITrending) {
-        paginationHTML = createChubPaginationHTML(jannyTrendingState.page, jannyTrendingState.hasMore, false);
-    } else if (state.isChubTrending) {
-        paginationHTML = createChubPaginationHTML(chubTrendingState.page, chubTrendingState.hasMore, false);
-    } else if (state.isWyvernTrending) {
-        paginationHTML = createChubPaginationHTML(wyvernTrendingState.page, wyvernTrendingState.hasMore, false);
-    } else if (state.isRisuRealmTrending) {
-        paginationHTML = createChubPaginationHTML(risuRealmApiState.page, risuRealmApiState.hasMore, false);
-    } else if (state.isBackyardTrending) {
-        paginationHTML = createChubPaginationHTML(1, backyardTrendingState.hasMore, false);
-    } else if (state.isPygmalionTrending) {
-        paginationHTML = createChubPaginationHTML(pygmalionApiState.page, pygmalionApiState.hasMore, false);
-    } else if (state.isLiveChub) {
-        paginationHTML = createChubPaginationHTML(state.currentPage, chubApiState.hasMore, state.currentPage * cardsPerPage < state.filteredCards.length);
-    } else if (state.isJannyAI) {
-        paginationHTML = createChubPaginationHTML(jannyApiState.page, jannyApiState.hasMore, false);
-    } else if (state.isCharacterTavern) {
-        paginationHTML = createChubPaginationHTML(ctApiState.page, ctApiState.hasMore, false);
-    } else if (state.isWyvern) {
-        paginationHTML = createChubPaginationHTML(wyvernApiState.page, wyvernApiState.hasMore, false);
-    } else if (state.isBackyard) {
-        paginationHTML = createChubPaginationHTML(1, backyardApiState.hasMore, false);
-    } else if (state.isPygmalion) {
-        paginationHTML = createChubPaginationHTML(pygmalionApiState.page, pygmalionApiState.hasMore, false);
-    } else if (state.isRisuRealm) {
-        paginationHTML = createChubPaginationHTML(risuRealmApiState.page, risuRealmApiState.hasMore, false);
+    let pageCards;
+    if (isAppend) {
+        const startIndex = state.renderedCardsCount || 0;
+        const endIndex = startIndex + cardsPerPage;
+        pageCards = state.filteredCards.slice(startIndex, endIndex);
     } else {
-        paginationHTML = createPaginationHTML(state.currentPage, state.totalPages);
+        state.currentPage = 1;
+        state.renderedCardsCount = 0;
+        const endIndex = cardsPerPage;
+        pageCards = state.filteredCards.slice(0, endIndex);
     }
 
-    // Set grid content
-    gridContainer.innerHTML = cardsHTML + paginationHTML;
+    const cardsHTML = pageCards.map(card => createCardHTML(card)).join('');
 
-    // Attach card click listeners
-    gridContainer.querySelectorAll('.bot-browser-card-thumbnail').forEach(cardEl => {
-        // Restore selected state if card was previously selected
+    if (isAppend) {
+        const sentinel = gridContainer.querySelector('.bot-browser-infinite-scroll-sentinel');
+        if (sentinel) sentinel.remove();
+        gridContainer.insertAdjacentHTML('beforeend', cardsHTML);
+    } else {
+        gridContainer.innerHTML = cardsHTML;
+    }
+
+    state.renderedCardsCount += pageCards.length;
+
+    const cardsToAttach = isAppend 
+        ? Array.from(gridContainer.children).slice(-pageCards.length) 
+        : Array.from(gridContainer.children);
+        
+    cardsToAttach.forEach(cardEl => {
+        if (!cardEl.classList.contains('bot-browser-card-thumbnail')) return;
+        
         const cardId = cardEl.dataset.cardId;
         if (state.selectedCards && state.selectedCards.has(cardId)) {
             cardEl.classList.add('selected');
@@ -1873,808 +1858,219 @@ function renderPage(state, menuContent, showCardDetailFunc, extensionName, exten
         cardEl.addEventListener('click', async (e) => {
             e.stopPropagation();
             e.preventDefault();
-
-            // In multi-select mode, any click on the card toggles selection
             if (state.isMultiSelectMode) {
                 handleCardCheckboxClick(cardEl, state, menuContent);
                 return;
             }
-
-            // Normal mode - open detail modal
             const card = state.currentCards.find(c => c.id === cardId);
-            if (card) {
-                await showCardDetailFunc(card);
-            }
+            if (card) await showCardDetailFunc(card);
         });
     });
 
-    // Attach pagination listeners
-    if (state.isJannyAITrending) {
-        setupJannyTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isChubTrending) {
-        setupChubTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isWyvernTrending) {
-        setupWyvernTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isRisuRealmTrending) {
-        setupRisuRealmTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isBackyardTrending) {
-        setupBackyardTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isPygmalionTrending) {
-        setupPygmalionPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isLiveChub) {
-        setupChubPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isJannyAI) {
-        setupJannyPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isCharacterTavern) {
-        setupCTPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isWyvern) {
-        setupWyvernPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isBackyard) {
-        setupBackyardPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isPygmalion) {
-        setupPygmalionPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else if (state.isRisuRealm) {
-        setupRisuRealmPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-    } else {
-        setupPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+    if (!isAppend) {
+        const wrapper = menuContent.querySelector('.bot-browser-card-grid-wrapper');
+        if (wrapper) wrapper.scrollTop = 0;
     }
 
-    // Scroll to top after rendering
-    const wrapper = menuContent.querySelector('.bot-browser-card-grid-wrapper');
-    if (wrapper) wrapper.scrollTop = 0;
-
-    // Validate images with Intersection Observer (no delay needed)
     validateCardImages();
 
-    if (state.isLiveChub) {
-        console.log(`[Bot Browser] Rendered Chub page ${state.currentPage} (${pageCards.length} cards)`);
-    } else if (state.isJannyAI) {
-        console.log(`[Bot Browser] Rendered JannyAI API page ${jannyApiState.page} (${pageCards.length} cards)`);
-    } else if (state.isCharacterTavern) {
-        console.log(`[Bot Browser] Rendered Character Tavern API page ${ctApiState.page} (${pageCards.length} cards)`);
-    } else {
-        console.log(`[Bot Browser] Rendered page ${state.currentPage}/${state.totalPages}`);
+    setupInfiniteScrollSentinel(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+}
+
+function getApiHasMore(state) {
+    if (state.isLiveChub) return state.isLorebooks ? getChubLorebooksApiState().hasMore : getChubApiState().hasMore;
+    if (state.isJannyAI) return jannyApiState.hasMore;
+    if (state.isCharacterTavern) return getCharacterTavernApiState().hasMore;
+    if (state.isWyvern) return state.isWyvernLorebooks ? getWyvernLorebooksApiState().hasMore : getWyvernApiState().hasMore;
+    if (state.isBackyard) return backyardApiState.hasMore;
+    if (state.isPygmalion) return pygmalionApiState.hasMore;
+    if (state.isRisuRealm) return risuRealmApiState.hasMore;
+    if (state.isJannyAITrending) return jannyTrendingState.hasMore;
+    if (state.isChubTrending) return chubTrendingState.hasMore;
+    if (state.isWyvernTrending) return wyvernTrendingState.hasMore;
+    if (state.isRisuRealmTrending) return risuRealmApiState.hasMore;
+    if (state.isBackyardTrending) return backyardTrendingState.hasMore;
+    if (state.isPygmalionTrending) return pygmalionApiState.hasMore;
+    return false;
+}
+
+function setupInfiniteScrollSentinel(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+    if (infiniteScrollObserver) {
+        infiniteScrollObserver.disconnect();
     }
+    
+    gridContainer.querySelectorAll('.bot-browser-infinite-scroll-sentinel').forEach(s => s.remove());
+    
+    const hasMoreLocal = state.renderedCardsCount < state.filteredCards.length;
+    const hasMoreApi = getApiHasMore(state);
+    
+    if (!hasMoreLocal && !hasMoreApi) {
+        if (state.currentCards.length > 0 && state.currentPage > 1) {
+            gridContainer.insertAdjacentHTML('beforeend', '<div class="bot-browser-infinite-scroll-sentinel"><i class="fa-solid fa-check"></i> <span>No more cards to load</span></div>');
+        }
+        return;
+    }
+    
+    // Do not show for trending logic unless it's page 1+
+    
+    const sentinel = document.createElement('div');
+    sentinel.className = 'bot-browser-infinite-scroll-sentinel';
+    sentinel.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Loading more cards...</span>';
+    gridContainer.appendChild(sentinel);
+    
+    infiniteScrollObserver = new IntersectionObserver(async (entries) => {
+        if (entries[0].isIntersecting && !isInfiniteLoading) {
+            isInfiniteLoading = true;
+            
+            if (hasMoreLocal) {
+                state.currentPage++;
+                renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings, true);
+                isInfiniteLoading = false;
+            } else if (hasMoreApi) {
+                await fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
+                isInfiniteLoading = false;
+            }
+        }
+    }, { root: gridContainer.closest('.bot-browser-card-grid-wrapper'), rootMargin: '600px' });
+    
+    infiniteScrollObserver.observe(sentinel);
 }
 
-// Chub pagination HTML - just prev/next buttons, no total pages
-function createChubPaginationHTML(currentPage, hasMoreFromApi, hasMoreCached) {
-    // Enable next if there are more cached cards or API has more
-    const canGoNext = hasMoreCached || hasMoreFromApi;
-    return `
-        <div class="bot-browser-pagination">
-            <button class="bot-browser-pagination-btn" data-action="prev" ${currentPage === 1 ? 'disabled' : ''}>
-                <i class="fa-solid fa-angle-left"></i> Previous
-            </button>
-            <span class="bot-browser-pagination-info">
-                Page ${currentPage}
-            </span>
-            <button class="bot-browser-pagination-btn" data-action="next" ${!canGoNext ? 'disabled' : ''}>
-                Next <i class="fa-solid fa-angle-right"></i>
-            </button>
-        </div>
-    `;
-}
-
-// Setup Chub pagination listeners - loads more from API when needed
-function setupChubPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    const cardsPerPage = extension_settings[extensionName].cardsPerPage || 200;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            if (action === 'prev' && state.currentPage > 1) {
-                state.currentPage--;
-                renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-            } else if (action === 'next') {
-                const nextPageStart = state.currentPage * cardsPerPage;
-                const nextPageEnd = (state.currentPage + 1) * cardsPerPage; // Need enough to FILL the next page
-
-                // Use appropriate state and loader based on whether this is lorebooks or cards
-                const apiState = state.isLorebooks ? getChubLorebooksApiState() : getChubApiState();
-                const loadMoreFunc = state.isLorebooks ? loadMoreChubLorebooks : loadMoreChubCards;
-
-                // Show loading state
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                // Load cards until we have enough to fill the next page
-                const { error } = await loadCardsUntilTarget({
-                    state,
-                    extensionName,
-                    extension_settings,
-                    targetCount: nextPageEnd,
-                    loadMoreFunc,
-                    apiState
-                });
-
-                // Update dropdowns with new data
-                updateCachedFiltersAndDropdowns(state, menuContent);
-
-                if (error) {
-                    toastr.error('Failed to load more');
-                    btn.disabled = false;
-                    btn.innerHTML = 'Next <i class="fa-solid fa-angle-right"></i>';
-                    return;
-                }
-
-                // Only go to next page if we actually have cards to show
-                if (state.filteredCards.length > nextPageStart) {
-                    state.currentPage++;
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                } else {
-                    // No more cards available after filtering
-                    toastr.info('No more cards available (all remaining cards were filtered out)');
-                    btn.disabled = false;
-                    btn.innerHTML = 'Next <i class="fa-solid fa-angle-right"></i>';
-                }
+async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
+    try {
+        let newCards = [];
+        
+        if (state.isLiveChub) {
+            const apiState = state.isLorebooks ? getChubLorebooksApiState() : getChubApiState();
+            const loadMoreFunc = state.isLorebooks ? loadMoreChubLorebooks : loadMoreChubCards;
+            const cardsPerPage = extension_settings[extensionName].cardsPerPage || 200;
+            const targetCount = state.currentCards.length + cardsPerPage;
+            
+            const { error, loadedCards } = await loadCardsUntilTarget({
+                state, extensionName, extension_settings, targetCount, loadMoreFunc, apiState
+            });
+            if (error) throw new Error('Failed to load Chub API');
+            
+            const serviceIndex = loadedData.serviceIndexes[state.isLorebooks ? "chub_lorebooks" : "chub"] || [];
+            state.currentCards = serviceIndex;
+            
+        } else if (state.isJannyAI) {
+            jannyApiState.page++;
+            const res = await searchJannyCharacters({
+                search: jannyApiState.lastSearch, page: jannyApiState.page, limit: 40,
+                sort: jannyApiState.lastSort, minTokens: state.jannyAdvancedFilters?.minTokens || 29, maxTokens: state.jannyAdvancedFilters?.maxTokens || 4101
+            });
+            const results = res.results?.[0] || {};
+            newCards = (results.hits || []).map(transformJannyCard);
+            jannyApiState.hasMore = (results.totalHits || 0) > (jannyApiState.page * 40);
+            
+        } else if (state.isCharacterTavern) {
+            const ctApiState = getCharacterTavernApiState();
+            ctApiState.page++;
+            newCards = await searchCharacterTavern({
+                query: state.filters.search, page: ctApiState.page, limit: 30,
+                hasLorebook: state.ctAdvancedFilters?.hasLorebook, isOC: state.ctAdvancedFilters?.isOC,
+                minTokens: state.ctAdvancedFilters?.minTokens, maxTokens: state.ctAdvancedFilters?.maxTokens, tags: state.ctAdvancedFilters?.tags || []
+            });
+            
+        } else if (state.isWyvern) {
+            const apiState = state.isWyvernLorebooks ? getWyvernLorebooksApiState() : getWyvernApiState();
+            apiState.page++;
+            let wyvernSort = "votes", wyvernOrder = "DESC";
+            switch (state.sortBy) {
+                case "date_desc": wyvernSort = "created_at"; wyvernOrder = "DESC"; break;
+                case "date_asc": wyvernSort = "created_at"; wyvernOrder = "ASC"; break;
+                case "name_asc": wyvernSort = "name"; wyvernOrder = "ASC"; break;
+                case "name_desc": wyvernSort = "name"; wyvernOrder = "DESC"; break;
             }
-        });
-    });
-}
-
-// Setup JannyAI pagination - uses API pagination directly (1 API page = 1 UI page)
-function setupJannyPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            // Helper to fetch and display an API page
-            const fetchApiPage = async (pageNum) => {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Fetching JannyAI API page ${pageNum}`);
-
-                    const searchResults = await searchJannyCharacters({
-                        search: jannyApiState.lastSearch,
-                        page: pageNum,
-                        limit: 40,
-                        sort: jannyApiState.lastSort,
-                        minTokens: state.jannyAdvancedFilters?.minTokens || 29,
-                        maxTokens: state.jannyAdvancedFilters?.maxTokens || 4101
-                    });
-
-                    const results = searchResults.results?.[0] || {};
-                    const cards = (results.hits || []).map(hit => transformJannyCard(hit));
-
-                    // Update API state
-                    jannyApiState.page = pageNum;
-                    jannyApiState.hasMore = (results.totalHits || 0) > (pageNum * 40);
-
-                    // REPLACE cards (not accumulate)
-                    state.currentCards = cards;
-
-                    // For JannyAI, search is done server-side by the API
-                    // Clear Fuse to prevent stale client-side search from overriding API results
-                    state.fuse = null;
-                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
-
-                    updateCachedFiltersAndDropdowns(state, menuContent);
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-
-                    console.log(`[Bot Browser] Displaying JannyAI API page ${pageNum} (${cards.length} cards)`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to fetch JannyAI page:', error);
-                    toastr.error('Failed to load page');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = action === 'next'
-                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
-                        : '<i class="fa-solid fa-angle-left"></i> Previous';
-                }
-            };
-
-            if (action === 'prev' && jannyApiState.page > 1) {
-                await fetchApiPage(jannyApiState.page - 1);
-            } else if (action === 'next' && jannyApiState.hasMore) {
-                await fetchApiPage(jannyApiState.page + 1);
-            }
-        });
-    });
-}
-
-// Setup Character Tavern pagination - uses API pagination directly (1 API page = 1 UI page)
-function setupCTPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    const ctApiState = getCharacterTavernApiState();
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            // Helper to fetch and display an API page
-            const fetchApiPage = async (pageNum) => {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Fetching Character Tavern API page ${pageNum}`);
-
-                    const cards = await searchCharacterTavern({
-                        query: state.filters.search,
-                        page: pageNum,
-                        limit: 30,
-                        hasLorebook: state.ctAdvancedFilters?.hasLorebook || undefined,
-                        isOC: state.ctAdvancedFilters?.isOC || undefined,
-                        minTokens: state.ctAdvancedFilters?.minTokens || undefined,
-                        maxTokens: state.ctAdvancedFilters?.maxTokens || undefined,
-                        tags: state.ctAdvancedFilters?.tags || []
-                    });
-
-                    // REPLACE cards (not accumulate)
-                    state.currentCards = cards;
-
-                    // For CT, search is done server-side by the API
-                    // Clear Fuse to prevent stale client-side search from overriding API results
-                    state.fuse = null;
-                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
-
-                    updateCachedFiltersAndDropdowns(state, menuContent);
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-
-                    console.log(`[Bot Browser] Displaying Character Tavern API page ${pageNum} (${cards.length} cards)`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to fetch Character Tavern page:', error);
-                    toastr.error('Failed to load page');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = action === 'next'
-                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
-                        : '<i class="fa-solid fa-angle-left"></i> Previous';
-                }
-            };
-
-            if (action === 'prev' && ctApiState.page > 1) {
-                await fetchApiPage(ctApiState.page - 1);
-            } else if (action === 'next' && ctApiState.hasMore) {
-                await fetchApiPage(ctApiState.page + 1);
-            }
-        });
-    });
-}
-
-// Setup Wyvern pagination - uses API pagination directly (1 API page = 1 UI page)
-function setupWyvernPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    const wyvernApiState = state.isWyvernLorebooks ? getWyvernLorebooksApiState() : getWyvernApiState();
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            // Helper to fetch and display an API page
-            const fetchApiPage = async (pageNum) => {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Fetching Wyvern API page ${pageNum}`);
-
-                    // Map sort options to Wyvern format
-                    let wyvernSort = 'votes';
-                    let wyvernOrder = 'DESC';
-                    switch (state.sortBy) {
-                        case 'date_desc': wyvernSort = 'created_at'; wyvernOrder = 'DESC'; break;
-                        case 'date_asc': wyvernSort = 'created_at'; wyvernOrder = 'ASC'; break;
-                        case 'name_asc': wyvernSort = 'name'; wyvernOrder = 'ASC'; break;
-                        case 'name_desc': wyvernSort = 'name'; wyvernOrder = 'DESC'; break;
-                        default: wyvernSort = 'votes'; wyvernOrder = 'DESC';
-                    }
-
-                    const searchFunc = state.isWyvernLorebooks ? searchWyvernLorebooks : searchWyvernCharacters;
-                    const transformFunc = state.isWyvernLorebooks ? transformWyvernLorebook : transformWyvernCard;
-
-                    const result = await searchFunc({
-                        search: state.filters.search,
-                        page: pageNum,
-                        limit: 40,
-                        sort: wyvernSort,
-                        order: wyvernOrder,
-                        tags: state.wyvernAdvancedFilters?.tags || [],
-                        rating: state.wyvernAdvancedFilters?.rating !== 'all' ? state.wyvernAdvancedFilters?.rating : undefined,
-                        hideNsfw: !state.wyvernAdvancedFilters?.rating ? extension_settings[extensionName].hideNsfw : false
-                    });
-
-                    const cards = result.results.map(transformFunc);
-
-                    // REPLACE cards (not accumulate)
-                    state.currentCards = cards;
-
-                    // For Wyvern, search is done server-side by the API
-                    // Clear Fuse to prevent stale client-side search from overriding API results
-                    state.fuse = null;
-                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
-
-                    updateCachedFiltersAndDropdowns(state, menuContent);
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-
-                    console.log(`[Bot Browser] Displaying Wyvern API page ${pageNum} (${cards.length} cards)`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to fetch Wyvern page:', error);
-                    toastr.error('Failed to load page');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = action === 'next'
-                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
-                        : '<i class="fa-solid fa-angle-left"></i> Previous';
-                }
-            };
-
-            if (action === 'prev' && wyvernApiState.page > 1) {
-                await fetchApiPage(wyvernApiState.page - 1);
-            } else if (action === 'next' && wyvernApiState.hasMore) {
-                await fetchApiPage(wyvernApiState.page + 1);
-            }
-        });
-    });
-}
-
-// Setup Chub Trending pagination - uses API pagination
-function setupChubTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            const fetchApiPage = async (pageNum) => {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Fetching Chub trending page ${pageNum}`);
-                    const result = await fetchChubTrending({
-                        page: pageNum,
-                        limit: 48,
-                        nsfw: !extension_settings[extensionName].hideNsfw
-                    });
-                    const cards = (result.nodes || []).map(transformChubTrendingCard);
-
-                    // Replace current cards with new page
-                    state.currentCards = cards;
-                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
-                    state.currentPage = 1;
-                    state.totalPages = 1;
-
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                    console.log(`[Bot Browser] Displaying Chub trending page ${pageNum} (${cards.length} cards)`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to fetch Chub trending page:', error);
-                    toastr.error('Failed to load page');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = action === 'next'
-                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
-                        : '<i class="fa-solid fa-angle-left"></i> Previous';
-                }
-            };
-
-            if (action === 'prev' && chubTrendingState.page > 1) {
-                await fetchApiPage(chubTrendingState.page - 1);
-            } else if (action === 'next' && chubTrendingState.hasMore) {
-                await fetchApiPage(chubTrendingState.page + 1);
-            }
-        });
-    });
-}
-
-// Setup JannyAI Trending pagination - uses API pagination
-function setupJannyTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            const fetchApiPage = async (pageNum) => {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Fetching JanitorAI/JannyAI trending page ${pageNum}`);
-                    const result = await fetchJannyTrending({ page: pageNum, limit: 40 });
-                    const cards = (result.characters || []).map(transformJannyTrendingCard);
-
-                    // Replace current cards with new page
-                    state.currentCards = cards;
-                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
-                    state.currentPage = 1;
-                    state.totalPages = 1;
-
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                    console.log(`[Bot Browser] Displaying JanitorAI/JannyAI trending page ${pageNum} (${cards.length} cards)`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to fetch JannyAI trending page:', error);
-                    toastr.error('Failed to load page');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = action === 'next'
-                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
-                        : '<i class="fa-solid fa-angle-left"></i> Previous';
-                }
-            };
-
-            if (action === 'prev' && jannyTrendingState.page > 1) {
-                await fetchApiPage(jannyTrendingState.page - 1);
-            } else if (action === 'next' && jannyTrendingState.hasMore) {
-                await fetchApiPage(jannyTrendingState.page + 1);
-            }
-        });
-    });
-}
-
-// Setup Wyvern Trending pagination - uses API pagination
-function setupWyvernTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            const fetchApiPage = async (pageNum) => {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Fetching Wyvern trending page ${pageNum}`);
-                    const result = await fetchWyvernTrending({
-                        page: pageNum,
-                        limit: 40,
-                        sort: 'nsfw-popular',
-                        rating: extension_settings[extensionName].hideNsfw ? 'none' : 'all'
-                    });
-                    const cards = (result.results || []).map(transformWyvernTrendingCard);
-
-                    // Replace current cards with new page
-                    state.currentCards = cards;
-                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
-                    state.currentPage = 1;
-                    state.totalPages = 1;
-
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                    console.log(`[Bot Browser] Displaying Wyvern trending page ${pageNum} (${cards.length} cards)`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to fetch Wyvern trending page:', error);
-                    toastr.error('Failed to load page');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = action === 'next'
-                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
-                        : '<i class="fa-solid fa-angle-left"></i> Previous';
-                }
-            };
-
-            if (action === 'prev' && wyvernTrendingState.page > 1) {
-                await fetchApiPage(wyvernTrendingState.page - 1);
-            } else if (action === 'next' && wyvernTrendingState.hasMore) {
-                await fetchApiPage(wyvernTrendingState.page + 1);
-            }
-        });
-    });
-}
-
-function setupRisuRealmTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            const fetchApiPage = async (pageNum) => {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Fetching RisuRealm trending page ${pageNum}`);
-                    const result = await fetchRisuRealmTrending({
-                        page: pageNum,
-                        nsfw: !extension_settings[extensionName].hideNsfw
-                    });
-                    const cards = result.cards.map(card => ({
-                        ...transformRisuRealmCard(card),
-                        sourceService: 'risuai_realm_trending',
-                        isTrending: true
-                    }));
-
-                    // Replace current cards with new page
-                    state.currentCards = cards;
-                    state.filteredCards = applyClientSideFilters(cards, state, extensionName, extension_settings);
-                    state.currentPage = 1;
-                    state.totalPages = 1;
-
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                    console.log(`[Bot Browser] Displaying RisuRealm trending page ${pageNum} (${cards.length} cards)`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to fetch RisuRealm trending page:', error);
-                    toastr.error('Failed to load page');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = action === 'next'
-                        ? 'Next <i class="fa-solid fa-angle-right"></i>'
-                        : '<i class="fa-solid fa-angle-left"></i> Previous';
-                }
-            };
-
-            if (action === 'prev' && risuRealmApiState.page > 1) {
-                await fetchApiPage(risuRealmApiState.page - 1);
-            } else if (action === 'next' && risuRealmApiState.hasMore) {
-                await fetchApiPage(risuRealmApiState.page + 1);
-            }
-        });
-    });
-}
-
-function setupBackyardTrendingPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            if (action === 'next' && backyardTrendingState.hasMore) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log('[Bot Browser] Loading more Backyard.ai trending');
-                    const result = await loadMoreBackyardTrending({
-                        type: extension_settings[extensionName].hideNsfw ? 'sfw' : 'all'
-                    });
-                    const cards = result.characters.map(card => ({
-                        ...transformBackyardCard(card),
-                        sourceService: 'backyard_trending',
-                        isTrending: true
-                    }));
-
-                    // Append new cards
-                    state.currentCards = [...state.currentCards, ...cards];
-                    state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
-                    state.currentPage = 1;
-                    state.totalPages = 1;
-
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                    console.log(`[Bot Browser] Loaded ${cards.length} more Backyard.ai trending cards`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to load Backyard.ai trending:', error);
-                    toastr.error('Failed to load more cards');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = 'Load More <i class="fa-solid fa-angle-right"></i>';
-                }
-            }
-        });
-    });
-}
-
-function setupBackyardPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            if (action === 'next' && backyardApiState.hasMore) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log('[Bot Browser] Loading more Backyard.ai cards');
-                    const cards = await loadMoreBackyardCharacters({
-                        type: extension_settings[extensionName].hideNsfw ? 'sfw' : 'all'
-                    });
-
-                    // Append new cards
-                    state.currentCards = [...state.currentCards, ...cards];
-                    state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
-                    state.currentPage = 1;
-                    state.totalPages = 1;
-
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                    console.log(`[Bot Browser] Loaded ${cards.length} more Backyard.ai cards`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to load more Backyard.ai cards:', error);
-                    toastr.error('Failed to load more cards');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = 'Load More <i class="fa-solid fa-angle-right"></i>';
-                }
-            }
-        });
-    });
-}
-
-function setupPygmalionPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    const isTrending = state.isPygmalionTrending;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-
-            if (action === 'next' && pygmalionApiState.hasMore) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
-                try {
-                    console.log(`[Bot Browser] Loading more Pygmalion ${isTrending ? 'trending ' : ''}cards`);
-                    let cards = await loadMorePygmalionCharacters({
-                        includeSensitive: !extension_settings[extensionName].hideNsfw
-                    });
-
-                    // Add trending flags if this is trending view
-                    if (isTrending) {
-                        cards = cards.map(card => ({
-                            ...card,
-                            sourceService: 'pygmalion_trending',
-                            isTrending: true
-                        }));
-                    }
-
-                    // Append new cards
-                    state.currentCards = [...state.currentCards, ...cards];
-                    state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
-                    state.currentPage = 1;
-                    state.totalPages = 1;
-
-                    renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                    console.log(`[Bot Browser] Loaded ${cards.length} more Pygmalion ${isTrending ? 'trending ' : ''}cards`);
-                } catch (error) {
-                    console.error('[Bot Browser] Failed to load more Pygmalion cards:', error);
-                    toastr.error('Failed to load more cards');
-                } finally {
-                    btn.disabled = false;
-                    btn.innerHTML = 'Load More <i class="fa-solid fa-angle-right"></i>';
-                }
-            }
-        });
-    });
-}
-
-function setupRisuRealmPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const action = btn.dataset.action;
-            let targetPage = risuRealmApiState.page;
-
-            if (action === 'next' && risuRealmApiState.hasMore) {
-                targetPage = risuRealmApiState.page + 1;
-            } else if (action === 'prev' && risuRealmApiState.page > 1) {
-                targetPage = risuRealmApiState.page - 1;
-            } else {
-                return; // No valid action
-            }
-
-            btn.disabled = true;
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-
-            try {
-                console.log(`[Bot Browser] Loading RisuRealm page ${targetPage}`);
-                const result = await searchRisuRealm({
-                    page: targetPage,
-                    sort: risuRealmApiState.lastSort,
-                    search: risuRealmApiState.lastSearch,
-                    nsfw: !extension_settings[extensionName].hideNsfw
-                });
-
-                const cards = result.cards.map(card => ({
-                    ...transformRisuRealmCard(card),
-                    sourceService: 'risuai_realm',
-                    isLiveApi: true
-                }));
-
-                // Replace cards (page navigation style)
-                state.currentCards = cards;
-                state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
-                state.currentPage = 1;
-                state.totalPages = 1;
-
-                renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-                console.log(`[Bot Browser] Loaded RisuRealm page ${risuRealmApiState.page} (${cards.length} cards)`);
-            } catch (error) {
-                console.error('[Bot Browser] Failed to load RisuRealm page:', error);
-                toastr.error('Failed to load page');
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = originalHTML;
-            }
-        });
-    });
-}
-
-function createPaginationHTML(currentPage, totalPages) {
-    if (totalPages <= 1) return '';
-
-    return `
-        <div class="bot-browser-pagination">
-            <button class="bot-browser-pagination-btn" data-action="first" ${currentPage === 1 ? 'disabled' : ''}>
-                <i class="fa-solid fa-angles-left"></i>
-            </button>
-            <button class="bot-browser-pagination-btn" data-action="prev" ${currentPage === 1 ? 'disabled' : ''}>
-                <i class="fa-solid fa-angle-left"></i>
-            </button>
-            <span class="bot-browser-pagination-info">
-                <input type="number" class="bot-browser-pagination-input" min="1" max="${totalPages}" value="${currentPage}">
-                <span>/ ${totalPages}</span>
-            </span>
-            <button class="bot-browser-pagination-btn" data-action="next" ${currentPage === totalPages ? 'disabled' : ''}>
-                <i class="fa-solid fa-angle-right"></i>
-            </button>
-            <button class="bot-browser-pagination-btn" data-action="last" ${currentPage === totalPages ? 'disabled' : ''}>
-                <i class="fa-solid fa-angles-right"></i>
-            </button>
-        </div>
-    `;
-}
-
-function setupPaginationListeners(gridContainer, state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
-    const pagination = gridContainer.querySelector('.bot-browser-pagination');
-    if (!pagination) return;
-
-    // Button clicks
-    pagination.querySelectorAll('.bot-browser-pagination-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const action = btn.dataset.action;
-
-            switch (action) {
-                case 'first':
-                    state.currentPage = 1;
-                    break;
-                case 'prev':
-                    state.currentPage = Math.max(1, state.currentPage - 1);
-                    break;
-                case 'next':
-                    state.currentPage = Math.min(state.totalPages, state.currentPage + 1);
-                    break;
-                case 'last':
-                    state.currentPage = state.totalPages;
-                    break;
-            }
-
-            renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-        });
-    });
-
-    // Direct page input
-    const pageInput = pagination.querySelector('.bot-browser-pagination-input');
-    if (pageInput) {
-        pageInput.addEventListener('change', (e) => {
-            let page = parseInt(e.target.value);
-            if (isNaN(page)) page = 1;
-            page = Math.max(1, Math.min(state.totalPages, page));
-            state.currentPage = page;
-            renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
-        });
-
-        pageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.target.blur();
-            }
-        });
+            const searchFunc = state.isWyvernLorebooks ? searchWyvernLorebooks : searchWyvernCharacters;
+            const transformFunc = state.isWyvernLorebooks ? transformWyvernLorebook : transformWyvernCard;
+            const result = await searchFunc({
+                search: state.filters.search, page: apiState.page, limit: 40, sort: wyvernSort, order: wyvernOrder,
+                tags: state.wyvernAdvancedFilters?.tags || [], rating: state.wyvernAdvancedFilters?.rating !== "all" ? state.wyvernAdvancedFilters?.rating : undefined,
+                hideNsfw: !state.wyvernAdvancedFilters?.rating ? extension_settings[extensionName].hideNsfw : false
+            });
+            newCards = result.results.map(transformFunc);
+            
+        } else if (state.isBackyard) {
+            backyardApiState.page++;
+            const result = await searchBackyardCharacters({
+                search: backyardApiState.lastSearch, page: backyardApiState.page, limit: 20,
+                sort: backyardApiState.lastSort, timeOption: state.backyardAdvancedFilters?.timeOption,
+                isNsfw: state.backyardAdvancedFilters?.isNsfw, tags: state.backyardAdvancedFilters?.tags || []
+            });
+            newCards = result.characters.map(transformBackyardCard);
+            
+        } else if (state.isPygmalion) {
+            pygmalionApiState.page++;
+            const result = await searchPygmalionCharacters({
+                search: pygmalionApiState.lastSearch, page: pygmalionApiState.page, limit: pygmalionApiState.pageSize,
+                sort: pygmalionApiState.lastSort, tags: state.pygmalionAdvancedFilters?.tags || [],
+                rating: state.pygmalionAdvancedFilters?.rating !== "all" ? state.pygmalionAdvancedFilters?.rating : undefined,
+                custom_avatar: state.pygmalionAdvancedFilters?.custom_avatar, definition_visibility: state.pygmalionAdvancedFilters?.definition_visibility
+            });
+            newCards = result.characters.map(transformPygmalionCard);
+            
+        } else if (state.isRisuRealm) {
+            risuRealmApiState.page++;
+            const result = await searchRisuRealm({
+                search: risuRealmApiState.lastSearch, page: risuRealmApiState.page, limit: 50, sort: risuRealmApiState.lastSort,
+                tags: state.risuRealmAdvancedFilters?.tags || [], type: state.risuRealmAdvancedFilters?.type || undefined, rating: state.risuRealmAdvancedFilters?.rating || undefined
+            });
+            newCards = result.characters.map(transformRisuRealmCard);
+            
+        } else if (state.isJannyAITrending) {
+            jannyTrendingState.page++;
+            const result = await fetchJannyTrending({ page: jannyTrendingState.page, limit: 40 });
+            newCards = (result.characters || []).map(transformJannyTrendingCard);
+            
+        } else if (state.isChubTrending) {
+            chubTrendingState.page++;
+            const result = await fetchChubTrending({ page: chubTrendingState.page, limit: 48, nsfw: !extension_settings[extensionName].hideNsfw });
+            newCards = (result.nodes || []).map(transformChubTrendingCard);
+            
+        } else if (state.isWyvernTrending) {
+            wyvernTrendingState.page++;
+            const result = await fetchWyvernTrending({ page: wyvernTrendingState.page, limit: 40, nsfw: !extension_settings[extensionName].hideNsfw });
+            newCards = result.cards.map(transformWyvernTrendingCard);
+            
+        } else if (state.isRisuRealmTrending) {
+            risuRealmApiState.page++;
+            const result = await fetchRisuRealmTrending({ page: risuRealmApiState.page, limit: 50 });
+            newCards = result.characters.map(transformRisuRealmCard);
+            
+        } else if (state.isBackyardTrending) {
+            backyardTrendingState.page++;
+            const result = await fetchBackyardTrending({ page: backyardTrendingState.page, limit: 20 });
+            newCards = result.characters.map(transformBackyardTrendingCard);
+            
+        } else if (state.isPygmalionTrending) {
+            pygmalionApiState.page++;
+            const result = await searchPygmalionCharacters({ page: pygmalionApiState.page, limit: pygmalionApiState.pageSize, sort: "trending" });
+            newCards = result.characters.map(transformPygmalionCard);
+        }
+
+        if (state.isLiveChub) {
+            // Internally handled by loadCardsUntilTarget
+        } else if (newCards.length > 0) {
+            state.currentCards = [...state.currentCards, ...newCards];
+            state.fuse = null;
+        }
+        
+        state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
+        
+        updateCachedFiltersAndDropdowns(state, menuContent);
+        
+        state.currentPage++;
+        renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings, true);
+        
+    } catch (error) {
+        console.error('[Bot Browser] Infinite Scroll API Fetch Error:', error);
+        toastr.error('Failed to load next page');
+        const sentinel = gridContainer.querySelector('.bot-browser-infinite-scroll-sentinel');
+        if (sentinel) {
+            sentinel.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> <span>Failed to load. Scroll to try again.</span>';
+        }
     }
 }
 
