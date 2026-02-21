@@ -1905,6 +1905,7 @@ function setupInfiniteScrollSentinel(gridContainer, state, menuContent, showCard
     const hasMoreApi = getApiHasMore(state);
     
     if (!hasMoreLocal && !hasMoreApi) {
+        console.log(`[Bot Browser] Infinite Scroll stopped. Local: ${hasMoreLocal}, API: ${hasMoreApi}. Rendered: ${state.renderedCardsCount}/${state.filteredCards.length}`);
         if (state.currentCards.length > 0 && state.currentPage > 1) {
             gridContainer.insertAdjacentHTML('beforeend', '<div class="bot-browser-infinite-scroll-sentinel"><i class="fa-solid fa-check"></i> <span>No more cards to load</span></div>');
         }
@@ -1920,24 +1921,28 @@ function setupInfiniteScrollSentinel(gridContainer, state, menuContent, showCard
     
     infiniteScrollObserver = new IntersectionObserver(async (entries) => {
         if (entries[0].isIntersecting && !isInfiniteLoading) {
+            console.log(`[Bot Browser] Infinite Scroll triggered! Local: ${hasMoreLocal}, API: ${hasMoreApi}`);
             isInfiniteLoading = true;
             
             if (hasMoreLocal) {
                 state.currentPage++;
+                console.log(`[Bot Browser] Rendering next local page ${state.currentPage}...`);
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings, true);
                 isInfiniteLoading = false;
             } else if (hasMoreApi) {
+                console.log(`[Bot Browser] Fetching next API page...`);
                 await fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
                 isInfiniteLoading = false;
             }
         }
-    }, { root: gridContainer.closest('.bot-browser-card-grid-wrapper'), rootMargin: '600px' });
+    }, { root: gridContainer.closest('.bot-browser-card-grid-wrapper'), rootMargin: '200px' });
     
     infiniteScrollObserver.observe(sentinel);
 }
 
 async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailFunc, extensionName, extension_settings) {
     try {
+        console.log(`[Bot Browser] fetchApiDataForInfiniteScroll starting for service: ${state.currentService}`);
         let newCards = [];
         
         if (state.isLiveChub) {
@@ -2057,9 +2062,13 @@ async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailF
 
         if (state.isLiveChub) {
             // Internally handled by loadCardsUntilTarget
+            console.log(`[Bot Browser] Chub API loadCardsUntilTarget completed. Total cards: ${state.currentCards.length}`);
         } else if (newCards.length > 0) {
+            console.log(`[Bot Browser] Fetched ${newCards.length} new cards from API. Appending...`);
             state.currentCards = [...state.currentCards, ...newCards];
             state.fuse = null;
+        } else {
+            console.log(`[Bot Browser] API returned 0 new cards.`);
         }
         
         state.filteredCards = applyClientSideFilters(state.currentCards, state, extensionName, extension_settings);
