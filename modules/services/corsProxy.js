@@ -45,8 +45,8 @@ const PROXY_CONFIGS = {
  */
 const SERVICE_PROXY_MAP = {
     // JannyAI (Cloudflare) - try corsproxy.io first to avoid Puter noise when it works
-    jannyai: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    jannyai_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    jannyai: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
+    jannyai_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
 
     // Character Tavern - corsproxy.io first, then Puter, then cors.lol
     character_tavern: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
