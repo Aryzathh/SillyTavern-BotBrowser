@@ -35,17 +35,54 @@ export function escapeHTML(text) {
         .replace(/'/g, '&#039;');
 }
 
+/**
+ * Safely sanitizes HTML content to prevent XSS.
+ * Tries to use DOMPurify if available globally (SillyTavern environment),
+ * otherwise falls back to a restrictive regex-based sanitizer.
+ */
+export function safeHTML(htmlContent) {
+    if (!htmlContent) return '';
+    
+    // Check if DOMPurify is available globally (SillyTavern imports it)
+    if (typeof DOMPurify !== 'undefined') {
+        return DOMPurify.sanitize(htmlContent, {
+            ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'hr', 'div', 'span', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'img', 'button', 'i', 'label', 'input'],
+            ALLOWED_ATTR: ['href', 'target', 'class', 'id', 'src', 'alt', 'title', 'data-action', 'data-url', 'data-id', 'style', 'type', 'checked']
+        });
+    }
+
+    // Fallback: Remove script tags and on* attributes if DOMPurify isn't loaded
+    console.warn('[Bot Browser] DOMPurify not found, using fallback HTML sanitization.');
+    let sanitized = String(htmlContent);
+    // Remove <script> tags and their content
+    sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    // Remove inline event handlers (onerror, onclick, etc)
+    sanitized = sanitized.replace(/ on\w+="[^"]*"/g, '').replace(/ on\w+='[^']*'/g, '').replace(/ on\w+=\w+/g, '');
+    // Remove javascript: links
+    sanitized = sanitized.replace(/href="javascript:[^"]*"/gi, 'href="#"').replace(/href='javascript:[^']*'/gi, 'href="#"');
+    
+    return sanitized;
+}
+
+const FORBIDDEN_URL_SCHEMES = /^\s*(javascript|data|vbscript|file|blob):/i;
+
 export function sanitizeImageUrl(url) {
-    if (!url) return '';
+    if (!url || typeof url !== 'string') return '';
     let trimmed = url.trim();
+
+    // Reject dangerous schemes (XSS / local file access)
+    if (FORBIDDEN_URL_SCHEMES.test(trimmed)) return '';
 
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
         // Strip any existing CORS proxy wrappers to get the original URL
-        // Then let the image loader handle CORS issues with its proxy chain
         if (trimmed.includes('corsproxy.io/?url=')) {
             const match = trimmed.match(/corsproxy\.io\/\?url=(.+)/);
             if (match) {
-                trimmed = decodeURIComponent(match[1]);
+                try {
+                    trimmed = decodeURIComponent(match[1]);
+                } catch {
+                    return '';
+                }
             }
         } else if (trimmed.includes('corsproxy.io/?')) {
             const afterProxy = trimmed.split('corsproxy.io/?')[1];
@@ -58,6 +95,9 @@ export function sanitizeImageUrl(url) {
                 trimmed = afterProxy;
             }
         }
+        // Re-validate after decoding: only allow http(s)
+        if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return '';
+        if (FORBIDDEN_URL_SCHEMES.test(trimmed)) return '';
         return escapeHTML(trimmed);
     }
     return '';

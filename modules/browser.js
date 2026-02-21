@@ -20,6 +20,7 @@ import {
 import { searchChubCards, transformChubCard } from './services/chubApi.js';
 import { searchBackyardCharacters, transformBackyardCard, backyardApiState, resetBackyardApiState, loadMoreBackyardCharacters, BACKYARD_SORT_TYPES } from './services/backyardApi.js';
 import { pygmalionApiState, resetPygmalionApiState, loadMorePygmalionCharacters } from './services/pygmalionApi.js';
+import { setButtonResourceLoading } from './utils/ui_utils.js';
 
 // JannyAI API state for pagination
 let jannyApiState = {
@@ -1108,8 +1109,7 @@ function setupAdvancedFilterListeners(menuContent, state, extensionName, extensi
         // Trigger new API search with all filters
         try {
             // Show loading state
-            applyBtn.disabled = true;
-            applyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Searching...';
+            setButtonResourceLoading(applyBtn, true, 'Apply Filters');
 
             const chubService = state.isLorebooks ? 'chub_lorebooks' : 'chub';
             const cards = await loadServiceIndex(chubService, true, {
@@ -1144,10 +1144,8 @@ function setupAdvancedFilterListeners(menuContent, state, extensionName, extensi
             console.error('[Bot Browser] Chub API advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
-            applyBtn.disabled = false;
-            applyBtn.innerHTML = 'Apply Filters';
+            setButtonResourceLoading(applyBtn, false);
         }
-
         // Save to persistent search
         savePersistentSearch(extensionName, extension_settings, state.currentService, state.filters, state.sortBy, state.advancedFilters, state.jannyAdvancedFilters, state.ctAdvancedFilters, state.wyvernAdvancedFilters);
     });
@@ -1188,8 +1186,7 @@ function setupJannyAdvancedFilterListeners(menuContent, state, extensionName, ex
 
         // Trigger new API search with all filters
         try {
-            applyBtn.disabled = true;
-            applyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Searching...';
+            setButtonResourceLoading(applyBtn, true, 'Apply Filters');
 
             resetJannyApiState();
 
@@ -1240,8 +1237,7 @@ function setupJannyAdvancedFilterListeners(menuContent, state, extensionName, ex
             console.error('[Bot Browser] JannyAI advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
-            applyBtn.disabled = false;
-            applyBtn.innerHTML = 'Apply Filters';
+            setButtonResourceLoading(applyBtn, false);
         }
 
         // Save to persistent search (include jannyAdvancedFilters)
@@ -1285,8 +1281,7 @@ function setupCTAdvancedFilterListeners(menuContent, state, extensionName, exten
 
         // Trigger new API search with all filters
         try {
-            applyBtn.disabled = true;
-            applyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Searching...';
+            setButtonResourceLoading(applyBtn, true, 'Apply Filters');
 
             resetCharacterTavernState();
 
@@ -1323,8 +1318,7 @@ function setupCTAdvancedFilterListeners(menuContent, state, extensionName, exten
             console.error('[Bot Browser] Character Tavern advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
-            applyBtn.disabled = false;
-            applyBtn.innerHTML = 'Apply Filters';
+            setButtonResourceLoading(applyBtn, false);
         }
 
         // Save to persistent search (include ctAdvancedFilters)
@@ -1365,8 +1359,7 @@ function setupWyvernAdvancedFilterListeners(menuContent, state, extensionName, e
 
         // Trigger new API search with all filters
         try {
-            applyBtn.disabled = true;
-            applyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Searching...';
+            setButtonResourceLoading(applyBtn, true, 'Apply Filters');
 
             if (state.isWyvernLorebooks) {
                 resetWyvernLorebooksApiState();
@@ -1421,8 +1414,7 @@ function setupWyvernAdvancedFilterListeners(menuContent, state, extensionName, e
             console.error('[Bot Browser] Wyvern advanced filter search failed:', error);
             toastr.error('Failed to apply filters: ' + error.message);
         } finally {
-            applyBtn.disabled = false;
-            applyBtn.innerHTML = 'Apply Filters';
+            setButtonResourceLoading(applyBtn, false);
         }
 
         // Save to persistent search

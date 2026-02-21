@@ -268,20 +268,27 @@ function tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex = 0, checkedExi
         return;
     }
 
+    const IMAGE_LOAD_TIMEOUT_MS = 12000;
     const testImg = new Image();
+    let timeoutId = null;
 
-    testImg.onload = () => {
-        // Proxy worked! Update the image
-        imageDiv.style.backgroundImage = `url('${proxyUrl}')`;
-        console.log(`[Bot Browser] Image loaded via ${proxyType}:`, originalUrl);
-    };
-
-    testImg.onerror = () => {
-        // This proxy failed, try next
+    const tryNextProxy = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = null;
         console.log(`[Bot Browser] ${proxyType} failed for:`, originalUrl);
         tryLoadImageWithProxy(imageDiv, originalUrl, proxyIndex + 1, true);
     };
 
+    testImg.onload = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = null;
+        imageDiv.style.backgroundImage = `url('${proxyUrl}')`;
+        console.log(`[Bot Browser] Image loaded via ${proxyType}:`, originalUrl);
+    };
+
+    testImg.onerror = tryNextProxy;
+
+    timeoutId = setTimeout(tryNextProxy, IMAGE_LOAD_TIMEOUT_MS);
     testImg.src = proxyUrl;
 }
 

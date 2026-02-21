@@ -298,6 +298,19 @@ export async function proxiedFetch(url, options = {}) {
     for (const proxyType of proxies) {
         try {
             let response;
+            
+            // SECURITY GUARD: Prevent leaking API keys/tokens to public proxies
+            if (finalFetchOptions.headers) {
+                const hasSensitiveHeader = 
+                    finalFetchOptions.headers['Authorization'] || 
+                    finalFetchOptions.headers['authorization'] || 
+                    finalFetchOptions.headers['x-api-key'] ||
+                    finalFetchOptions.headers['X-Api-Key'];
+                    
+                if (hasSensitiveHeader && (proxyType === PROXY_TYPES.CORSPROXY_IO || proxyType === PROXY_TYPES.CORS_LOL)) {
+                    throw new Error("SECURITY VIOLATION: Cannot send API key/Authorization header through a public proxy!");
+                }
+            }
 
             if (proxyType === PROXY_TYPES.PUTER) {
                 if (!isPuterEnabled()) {
@@ -369,7 +382,7 @@ export async function proxiedFetch(url, options = {}) {
         }
     }
 
-    // All proxies failed
+    // All proxies failed - build user-friendly message by proxy type
     if (isDebugEnabled() && errors.length > 0) {
         debugWarn('[CORS Proxy] All proxies failed:', errors.map(e => ({ proxy: e.proxy, message: e.error?.message })));
     }
@@ -382,9 +395,21 @@ export async function proxiedFetch(url, options = {}) {
         })
         .join('; ');
 
+    const hasPuterUnauth = errors.some(e => e.proxy === PROXY_TYPES.PUTER && /unauthorized|401/i.test(String(e.error?.message || '')));
+    const has413 = errors.some(e => /413|payload too large/i.test(String(e.error?.message || '')));
+    const has429 = errors.some(e => /429|rate limit/i.test(String(e.error?.message || '')));
+    const has403 = errors.some(e => /403|forbidden/i.test(String(e.error?.message || '')));
+
+    let userHint = '';
+    if (hasPuterUnauth) userHint = ' Sign in to Puter in another tab and retry.';
+    else if (has413) userHint = ' Response too large for some proxies. Try again or use Puter.';
+    else if (has429) userHint = ' Proxies are rate-limited. Try again in a moment.';
+    else if (has403) userHint = ' Request was blocked. Try another source or enable Puter.';
+
     const finalError = new Error(summary ? `All proxies failed: ${summary}` : 'All proxies failed');
     finalError.name = 'ProxyChainError';
     finalError.proxyErrors = errors;
+    finalError.userHint = userHint;
     throw finalError;
 }
 

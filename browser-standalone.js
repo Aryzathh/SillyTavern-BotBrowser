@@ -133,7 +133,17 @@ async function loadServiceIndex(serviceName) {
             return [];
         }
 
-        const data = JSON.parse(text);
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (parseErr) {
+            console.error(`[Bot Browser] ${serviceName} index JSON parse failed:`, parseErr);
+            if (typeof showToast === 'function') {
+                showToast(`Failed to parse ${serviceName} index. The data may be corrupted.`, 'error');
+            }
+            serviceIndexes[serviceName] = [];
+            return [];
+        }
 
         // Handle different data formats: object with cards/lorebooks array, or direct array
         const items = data.cards || data.lorebooks || data;
@@ -146,53 +156,87 @@ async function loadServiceIndex(serviceName) {
         return items;
     } catch (e) {
         console.error(`[Bot Browser] ${serviceName} error:`, e);
+        if (e instanceof SyntaxError && typeof showToast === 'function') {
+            showToast(`Failed to load ${serviceName} index.`, 'error');
+        }
         serviceIndexes[serviceName] = [];
         return [];
     }
 }
 
-// Load user's SillyTavern characters
-async function loadMyCharacters() {
-    try {
-        const response = await fetch('/api/characters/all', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken
-            },
-            body: JSON.stringify({})
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const characters = await response.json();
+// Load user's SillyTavern characters (with retry and user-visible error)
+const LOAD_MY_CHARACTERS_RETRIES = 2;
+const LOAD_MY_CHARACTERS_RETRY_DELAY_MS = 800;
 
-        // Transform to card format
-        return characters.map(char => ({
-            id: char.avatar || char.name,
-            name: char.name || 'Unknown',
-            creator: char.data?.creator || '',
-            avatar_url: `/characters/${encodeURIComponent(char.avatar)}`,
-            image_url: `/characters/${encodeURIComponent(char.avatar)}`,
-            tags: char.data?.tags || [],
-            description: char.data?.description || char.description || '',
-            desc_preview: (char.data?.description || '').substring(0, 150),
-            personality: char.data?.personality || '',
-            scenario: char.data?.scenario || '',
-            first_message: char.data?.first_mes || char.first_mes || '',
-            first_mes: char.data?.first_mes || char.first_mes || '',
-            mes_example: char.data?.mes_example || '',
-            system_prompt: char.data?.system_prompt || '',
-            creator_notes: char.data?.creator_notes || '',
-            created_at: char.create_date,
-            possibleNsfw: (char.data?.tags || []).some(t => t.toLowerCase() === 'nsfw'),
-            service: 'local',
-            sourceService: 'sillytavern',
-            isLocal: true,
-            _rawData: char
-        }));
-    } catch (e) {
-        console.error('[Bot Browser Standalone] Failed to load characters:', e);
+async function loadMyCharacters() {
+    if (!csrfToken) {
+        if (typeof showToast === 'function') {
+            showToast('Cannot load your characters: not running in SillyTavern or session expired.', 'error');
+        }
         return [];
     }
+    let lastError = null;
+    for (let attempt = 0; attempt <= LOAD_MY_CHARACTERS_RETRIES; attempt++) {
+        try {
+            const response = await fetch('/api/characters/all', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({})
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const raw = await response.json();
+            const characters = Array.isArray(raw) ? raw : (raw?.characters || raw?.data || []);
+
+            if (!Array.isArray(characters)) {
+                throw new Error('Invalid API response format');
+            }
+
+            // Transform to card format with safe fallbacks for all fields
+            return characters.map(char => {
+                const data = char?.data || {};
+                const tags = Array.isArray(data.tags) ? data.tags : (Array.isArray(char.tags) ? char.tags : []);
+                const desc = (data.description ?? char.description ?? '').toString();
+                const firstMes = data.first_mes ?? char.first_mes ?? '';
+                return {
+                    id: (char.avatar ?? char.name ?? 'unknown').toString(),
+                    name: (char.name ?? 'Unknown').toString(),
+                    creator: (data.creator ?? '').toString(),
+                    avatar_url: `/characters/${encodeURIComponent(char.avatar ?? char.name ?? '')}`,
+                    image_url: `/characters/${encodeURIComponent(char.avatar ?? char.name ?? '')}`,
+                    tags,
+                    description: desc,
+                    desc_preview: desc.substring(0, 150),
+                    personality: (data.personality ?? '').toString(),
+                    scenario: (data.scenario ?? '').toString(),
+                    first_message: firstMes,
+                    first_mes: firstMes,
+                    mes_example: (data.mes_example ?? '').toString(),
+                    system_prompt: (data.system_prompt ?? '').toString(),
+                    creator_notes: (data.creator_notes ?? '').toString(),
+                    created_at: char.create_date ?? null,
+                    possibleNsfw: tags.some(t => String(t).toLowerCase() === 'nsfw'),
+                    service: 'local',
+                    sourceService: 'sillytavern',
+                    isLocal: true,
+                    _rawData: char
+                };
+            });
+        } catch (e) {
+            lastError = e;
+            console.error('[Bot Browser Standalone] Failed to load characters (attempt ' + (attempt + 1) + '/' + (LOAD_MY_CHARACTERS_RETRIES + 1) + '):', e);
+            if (attempt < LOAD_MY_CHARACTERS_RETRIES) {
+                await new Promise(r => setTimeout(r, LOAD_MY_CHARACTERS_RETRY_DELAY_MS));
+            }
+        }
+    }
+    const msg = lastError?.message || String(lastError);
+    if (typeof showToast === 'function') {
+        showToast('Could not load your characters. ' + (msg.includes('HTTP') ? msg : 'Check connection and retry.'), 'error');
+    }
+    return [];
 }
 
 function loadBookmarks() {
@@ -205,11 +249,13 @@ function addBookmark(card) {
     const bookmarks = loadBookmarks();
     if (!bookmarks.some(b => b.id === card.id)) bookmarks.push(card);
     saveBookmarksStorage(bookmarks);
+    state.bookmarks = bookmarks;
     return bookmarks;
 }
 function removeBookmark(cardId) {
     const bookmarks = loadBookmarks().filter(b => b.id !== cardId);
     saveBookmarksStorage(bookmarks);
+    state.bookmarks = bookmarks;
     return bookmarks;
 }
 function loadImportedCards() {
@@ -244,9 +290,15 @@ function isLorebookImportRecord(record) {
 function normalizeImportedRecord(record) {
     const r = record && typeof record === 'object' ? { ...record } : {};
 
+    // Migration: ensure required fields exist for old import records
+    if (r.id === undefined || r.id === null) r.id = r.name || r.avatar_url || r.image_url || String(Date.now());
+    if (r.name === undefined || r.name === null) r.name = 'Unknown';
+    if (r.description === undefined || r.description === null) r.description = '';
+
     // Normalize timestamps (standalone uses importedAt; in-app uses imported_at)
     if (!r.importedAt && r.imported_at) r.importedAt = r.imported_at;
     if (!r.imported_at && r.importedAt) r.imported_at = r.importedAt;
+    if (!r.importedAt && !r.imported_at) r.importedAt = r.imported_at = Date.now();
 
     // Normalize description preview
     if (!r.desc_preview && r.description) r.desc_preview = String(r.description).slice(0, 500);
@@ -435,10 +487,21 @@ async function fetchCsrfToken() {
     return null;
 }
 
+/** Returns true if CSRF token is available; otherwise shows toast and returns false. Use before ST API calls. */
+function requireCsrfToken(actionLabel = 'This action') {
+    if (csrfToken) return true;
+    if (typeof showToast === 'function') {
+        showToast(`${actionLabel} requires SillyTavern. Open Bot Browser from SillyTavern.`, 'error');
+    }
+    return false;
+}
+
 function resetResultsUiForLoading() {
     const grid = document.getElementById('cardsGrid');
     const noResults = document.getElementById('noResults');
     if (grid) {
+        // Revoke object URLs before clearing to prevent memory leaks
+        grid.querySelectorAll('img[data-object-url]').forEach(img => revokeObjectUrlIfAny(img));
         grid.classList.add('hidden');
         grid.innerHTML = '';
     }
@@ -452,13 +515,17 @@ function getFriendlyLoadError(error, source) {
     if (!raw) return 'Unknown error';
 
     if (raw.includes('All proxies failed')) {
-        if (raw.toLowerCase().includes('unauthorized (puter)')) {
+        const hint = error?.userHint || '';
+        if (raw.toLowerCase().includes('unauthorized (puter)') || (hint && hint.includes('Puter'))) {
             return `${getServiceDisplayName(source)} is blocked by CORS/Cloudflare and Puter is not signed in. Open Puter in a tab, sign in, then retry.`;
         }
         if (raw.includes('(413)') || raw.toLowerCase().includes('payload too large')) {
             return `${getServiceDisplayName(source)} response is too large for some free proxies. Try again (it will rotate proxies), or enable/sign in to Puter for best reliability.`;
         }
-        return `${getServiceDisplayName(source)} is blocked by CORS/proxies. ${raw}`;
+        if (raw.includes('429') || (hint && hint.includes('rate'))) {
+            return `${getServiceDisplayName(source)} proxies are rate-limited. Try again in a moment.`;
+        }
+        return `${getServiceDisplayName(source)} is blocked by CORS/proxies.${hint || ' ' + raw}`;
     }
 
     return raw;
@@ -3520,70 +3587,73 @@ async function handleCardImageError(img) {
         return;
     }
     if (!(originalUrl.startsWith('http://') || originalUrl.startsWith('https://'))) {
-        // Proxies won't help for same-origin relative paths.
         wrapper?.classList.add('no-image');
         return;
     }
 
-    // Prevent infinite retry loops
     const proxyChain = getCardImageProxyChain(img.dataset.service);
-    const attempt = Number.parseInt(img.dataset.proxyAttempt || '0', 10) || 0;
-    if (attempt >= proxyChain.length) {
-        wrapper?.classList.add('no-image');
-        return;
-    }
-
+    let attempt = Number.parseInt(img.dataset.proxyAttempt || '0', 10) || 0;
     wrapper?.classList.remove('no-image');
 
-    const proxyType = proxyChain[attempt];
-    img.dataset.proxyAttempt = String(attempt + 1);
+    // Iterative proxy attempts (no recursion to avoid stack overflow)
+    while (attempt < proxyChain.length) {
+        const proxyType = proxyChain[attempt];
+        img.dataset.proxyAttempt = String(attempt + 1);
 
-    if (proxyType === PROXY_TYPES.PUTER) {
-        // Puter can't be represented as a URL; fetch as a blob and use an object URL.
-        const resp = await proxiedFetch(originalUrl, {
-            proxyChain: [PROXY_TYPES.PUTER],
-            fetchOptions: { method: 'GET' },
-            timeoutMs: 15000,
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        revokeObjectUrlIfAny(img);
-        const objectUrl = URL.createObjectURL(blob);
-        img.dataset.objectUrl = objectUrl;
-        img.src = objectUrl;
-        return;
+        if (proxyType === PROXY_TYPES.PUTER) {
+            try {
+                const resp = await proxiedFetch(originalUrl, {
+                    proxyChain: [PROXY_TYPES.PUTER],
+                    fetchOptions: { method: 'GET' },
+                    timeoutMs: 15000,
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const blob = await resp.blob();
+                revokeObjectUrlIfAny(img);
+                const objectUrl = URL.createObjectURL(blob);
+                img.dataset.objectUrl = objectUrl;
+                img.src = objectUrl;
+                return;
+            } catch {
+                attempt++;
+                continue;
+            }
+        }
+
+        if (proxyType === PROXY_TYPES.CORS_LOL) {
+            const proxiedUrl = buildProxyUrl(proxyType, originalUrl);
+            const currentSrc = img.currentSrc || img.src || '';
+            if (!proxiedUrl || proxiedUrl === currentSrc) {
+                attempt++;
+                continue;
+            }
+            revokeObjectUrlIfAny(img);
+            img.src = proxiedUrl;
+            return;
+        }
+
+        // corsproxy.io and other fetchable proxy types
+        try {
+            const resp = await proxiedFetch(originalUrl, {
+                proxyChain: [proxyType],
+                fetchOptions: { method: 'GET' },
+                timeoutMs: 15000,
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const blob = await resp.blob();
+            const type = (blob.type || '').toLowerCase();
+            if (type && !type.startsWith('image/')) throw new Error(`Not an image (${type})`);
+            revokeObjectUrlIfAny(img);
+            const objectUrl = URL.createObjectURL(blob);
+            img.dataset.objectUrl = objectUrl;
+            img.src = objectUrl;
+            return;
+        } catch {
+            attempt++;
+        }
     }
 
-    // cors.lol is often usable as an <img src> proxy but may not be usable via fetch() (CORS),
-    // so handle it as a URL assignment.
-    if (proxyType === PROXY_TYPES.CORS_LOL) {
-        const proxiedUrl = buildProxyUrl(proxyType, originalUrl);
-        const currentSrc = img.currentSrc || img.src || '';
-        if (!proxiedUrl || proxiedUrl === currentSrc) return handleCardImageError(img);
-        revokeObjectUrlIfAny(img);
-        img.src = proxiedUrl;
-        return;
-    }
-
-    // For corsproxy.io (and any other fetchable proxy types), fetch as a blob and use an object URL.
-    try {
-        const resp = await proxiedFetch(originalUrl, {
-            proxyChain: [proxyType],
-            fetchOptions: { method: 'GET' },
-            timeoutMs: 15000,
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        const type = (blob.type || '').toLowerCase();
-        if (type && !type.startsWith('image/')) throw new Error(`Not an image (${type})`);
-        revokeObjectUrlIfAny(img);
-        const objectUrl = URL.createObjectURL(blob);
-        img.dataset.objectUrl = objectUrl;
-        img.src = objectUrl;
-        return;
-    } catch {
-        return handleCardImageError(img);
-    }
+    wrapper?.classList.add('no-image');
 }
 
 function installProxyFallbackForImg(img, originalUrl, service) {
@@ -3609,53 +3679,62 @@ async function handleAnyImageError(img) {
     if (!(originalUrl.startsWith('http://') || originalUrl.startsWith('https://'))) return;
 
     const proxyChain = getCardImageProxyChain(img.dataset.service);
-    const attempt = Number.parseInt(img.dataset.proxyAttempt || '0', 10) || 0;
-    if (attempt >= proxyChain.length) return;
+    let attempt = Number.parseInt(img.dataset.proxyAttempt || '0', 10) || 0;
 
-    const proxyType = proxyChain[attempt];
-    img.dataset.proxyAttempt = String(attempt + 1);
+    while (attempt < proxyChain.length) {
+        const proxyType = proxyChain[attempt];
+        img.dataset.proxyAttempt = String(attempt + 1);
 
-    if (proxyType === PROXY_TYPES.PUTER) {
-        const resp = await proxiedFetch(originalUrl, {
-            proxyChain: [PROXY_TYPES.PUTER],
-            fetchOptions: { method: 'GET' },
-            timeoutMs: 15000,
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        revokeObjectUrlIfAny(img);
-        const objectUrl = URL.createObjectURL(blob);
-        img.dataset.objectUrl = objectUrl;
-        img.src = objectUrl;
-        return;
-    }
+        if (proxyType === PROXY_TYPES.PUTER) {
+            try {
+                const resp = await proxiedFetch(originalUrl, {
+                    proxyChain: [PROXY_TYPES.PUTER],
+                    fetchOptions: { method: 'GET' },
+                    timeoutMs: 15000,
+                });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const blob = await resp.blob();
+                revokeObjectUrlIfAny(img);
+                const objectUrl = URL.createObjectURL(blob);
+                img.dataset.objectUrl = objectUrl;
+                img.src = objectUrl;
+                return;
+            } catch {
+                attempt++;
+                continue;
+            }
+        }
 
-    if (proxyType === PROXY_TYPES.CORS_LOL) {
-        const proxiedUrl = buildProxyUrl(proxyType, originalUrl);
-        const currentSrc = img.currentSrc || img.src || '';
-        if (!proxiedUrl || proxiedUrl === currentSrc) return handleAnyImageError(img);
-        revokeObjectUrlIfAny(img);
-        img.src = proxiedUrl;
-        return;
-    }
+        if (proxyType === PROXY_TYPES.CORS_LOL) {
+            const proxiedUrl = buildProxyUrl(proxyType, originalUrl);
+            const currentSrc = img.currentSrc || img.src || '';
+            if (!proxiedUrl || proxiedUrl === currentSrc) {
+                attempt++;
+                continue;
+            }
+            revokeObjectUrlIfAny(img);
+            img.src = proxiedUrl;
+            return;
+        }
 
-    try {
-        const resp = await proxiedFetch(originalUrl, {
-            proxyChain: [proxyType],
-            fetchOptions: { method: 'GET' },
-            timeoutMs: 15000,
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        const type = (blob.type || '').toLowerCase();
-        if (type && !type.startsWith('image/')) throw new Error(`Not an image (${type})`);
-        revokeObjectUrlIfAny(img);
-        const objectUrl = URL.createObjectURL(blob);
-        img.dataset.objectUrl = objectUrl;
-        img.src = objectUrl;
-        return;
-    } catch {
-        return handleAnyImageError(img);
+        try {
+            const resp = await proxiedFetch(originalUrl, {
+                proxyChain: [proxyType],
+                fetchOptions: { method: 'GET' },
+                timeoutMs: 15000,
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const blob = await resp.blob();
+            const type = (blob.type || '').toLowerCase();
+            if (type && !type.startsWith('image/')) throw new Error(`Not an image (${type})`);
+            revokeObjectUrlIfAny(img);
+            const objectUrl = URL.createObjectURL(blob);
+            img.dataset.objectUrl = objectUrl;
+            img.src = objectUrl;
+            return;
+        } catch {
+            attempt++;
+        }
     }
 }
 
@@ -5042,6 +5121,10 @@ async function importCardWithEmbeddedData(card) {
         return { file_name: fileName, imported_via: 'bridge' };
     }
 
+    if (!requireCsrfToken('Import')) {
+        throw new Error('SillyTavern session required to import');
+    }
+
     // Upload to SillyTavern
     const formData = new FormData();
     formData.append('avatar', file);
@@ -5139,6 +5222,10 @@ async function importCharacterFromUrl(url, preservedName = null) {
     // Best UX: import via the main SillyTavern tab (updates UI + selects the imported card)
     if (await tryImportFileViaOpener({ kind: 'character', file, preservedName: fileName })) {
         return { file_name: fileName, imported_via: 'opener' };
+    }
+
+    if (!requireCsrfToken('Import')) {
+        throw new Error('SillyTavern session required to import');
     }
 
     const formData = new FormData();
@@ -6392,6 +6479,7 @@ async function saveCharacterEdits() {
         showToast('Can only edit local characters', 'error');
         return;
     }
+    if (!requireCsrfToken('Saving character')) return;
 
     const current = getEditFormData();
     const saveBtn = document.getElementById('saveCharacterBtn');
@@ -6987,6 +7075,7 @@ async function scanForDuplicates(threshold = 60) {
 }
 
 async function deleteCharacter(avatarId) {
+    if (!requireCsrfToken('Deleting character')) return;
     try {
         const response = await fetch('/api/characters/delete', {
             method: 'POST',

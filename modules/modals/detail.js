@@ -8,7 +8,7 @@ import { fetchRisuRealmCharacter, transformFullRisuRealmCharacter } from '../ser
 import { getBackyardCharacter, transformFullBackyardCharacter } from '../services/backyardApi.js';
 import { getPygmalionCharacter, transformFullPygmalionCharacter } from '../services/pygmalionApi.js';
 import { buildProxyUrl, PROXY_TYPES, proxiedFetch } from '../services/corsProxy.js';
-import { getSourceUrl } from '../utils/utils.js';
+import { getSourceUrl, safeHTML } from '../utils/utils.js';
 import { characters, selectCharacterById } from '/script.js';
 
 let isOpeningModal = false;
@@ -295,7 +295,7 @@ function createDetailModal(fullCard, isRandom = false) {
         detailModal.dataset.stCharacterIndex = stCharacter.index;
     }
 
-    detailModal.innerHTML = buildDetailModalHTML(
+    detailModal.innerHTML = safeHTML(buildDetailModalHTML(
         cardData.cardName,
         cardData.imageUrl,
         cardData.isLorebook,
@@ -318,47 +318,64 @@ function createDetailModal(fullCard, isRandom = false) {
         isImported,
         characterExistsInST,
         sourceUrlData
-    );
+    ));
 
     return { detailOverlay, detailModal };
 }
 
 function setupDetailModalEvents(detailModal, detailOverlay, fullCard, state) {
     const closeButton = detailModal.querySelector('.bot-browser-detail-close');
-    closeButton.addEventListener('click', (e) => {
+
+    const onClose = (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
         e.preventDefault();
         closeDetailModal();
-    });
+    };
 
-    detailOverlay.addEventListener('click', (e) => {
+    const onOverlayClick = (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
         e.preventDefault();
         closeDetailModal();
-    });
+    };
 
-    detailOverlay.addEventListener('mousedown', (e) => {
+    const onOverlayMouseDown = (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
-    });
+    };
 
-    detailOverlay.addEventListener('mouseup', (e) => {
+    const onOverlayMouseUp = (e) => {
         e.stopPropagation();
         e.stopImmediatePropagation();
-    });
+    };
+
+    const onModalClick = (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+    };
+
+    const onModalMouseDown = (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+    };
+
+    const onModalMouseUp = (e) => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+    };
+
+    closeButton.addEventListener('click', onClose);
+    detailOverlay.addEventListener('click', onOverlayClick);
+    detailOverlay.addEventListener('mousedown', onOverlayMouseDown);
+    detailOverlay.addEventListener('mouseup', onOverlayMouseUp);
 
     const backButton = detailModal.querySelector('.bot-browser-detail-back');
-    backButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        e.preventDefault();
-        closeDetailModal();
-    });
+    backButton.addEventListener('click', onClose);
 
+    const collapseHandlers = [];
     detailModal.querySelectorAll('.bot-browser-collapse-toggle').forEach(toggle => {
-        toggle.addEventListener('click', (e) => {
+        const handler = (e) => {
             e.stopPropagation();
             e.preventDefault();
             const targetId = toggle.dataset.target;
@@ -372,23 +389,30 @@ function setupDetailModalEvents(detailModal, detailOverlay, fullCard, state) {
                 content.style.display = 'none';
                 icon.className = 'fa-solid fa-chevron-right';
             }
-        });
+        };
+        collapseHandlers.push({ el: toggle, handler });
+        toggle.addEventListener('click', handler);
     });
 
-    detailModal.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-    });
+    detailModal.addEventListener('click', onModalClick);
+    detailModal.addEventListener('mousedown', onModalMouseDown);
+    detailModal.addEventListener('mouseup', onModalMouseUp);
 
-    detailModal.addEventListener('mousedown', (e) => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-    });
-
-    detailModal.addEventListener('mouseup', (e) => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-    });
+    // Cleanup on close: remove all listeners so they can be GC'd and avoid double-firing
+    const cleanup = () => {
+        closeButton.removeEventListener('click', onClose);
+        detailOverlay.removeEventListener('click', onOverlayClick);
+        detailOverlay.removeEventListener('mousedown', onOverlayMouseDown);
+        detailOverlay.removeEventListener('mouseup', onOverlayMouseUp);
+        backButton.removeEventListener('click', onClose);
+        collapseHandlers.forEach(({ el, handler }) => el.removeEventListener('click', handler));
+        detailModal.removeEventListener('click', onModalClick);
+        detailModal.removeEventListener('mousedown', onModalMouseDown);
+        detailModal.removeEventListener('mouseup', onModalMouseUp);
+    };
+    detailModal.dataset.cleanupDetailModal = '1';
+    detailModal._detailModalCleanup = cleanup;
+    detailOverlay._detailModalCleanup = cleanup;
 
     const bookmarkBtn = detailModal.querySelector('.bot-browser-bookmark-btn');
     if (bookmarkBtn) {
@@ -646,10 +670,17 @@ export function closeDetailModal() {
     const detailModal = document.getElementById('bot-browser-detail-modal');
     const detailOverlay = document.getElementById('bot-browser-detail-overlay');
 
+    if (detailModal && typeof detailModal._detailModalCleanup === 'function') {
+        detailModal._detailModalCleanup();
+        detailModal._detailModalCleanup = null;
+    }
+    if (detailOverlay && typeof detailOverlay._detailModalCleanup === 'function') {
+        detailOverlay._detailModalCleanup = null;
+    }
+
     if (detailModal) detailModal.remove();
     if (detailOverlay) detailOverlay.remove();
 
-    // Reset the modal opening guard
     isOpeningModal = false;
 
     console.log('[Bot Browser] Card detail modal closed');
