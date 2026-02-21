@@ -1,6 +1,6 @@
 import { Fuse } from '../../../../../lib.js';
 import { debounce, escapeHTML } from './utils/utils.js';
-import { createBrowserHeader, createCardGrid, createCardHTML, createBottomActions, createBulkActionBar } from './templates/templates.js';
+import { createBrowserHeader, createCardGrid, createCardHTML, createBottomActions, createBulkActionBar, createErrorStateHTML } from './templates/templates.js';
 import { getAllTags, getAllCreators, filterCards, sortCards, deduplicateCards, validateCardImages } from './services/cards.js';
 import { loadPersistentSearch, savePersistentSearch, loadSearchCollapsed, saveSearchCollapsed } from './storage/storage.js';
 import { loadMoreChubCards, loadMoreChubLorebooks, getChubApiState, getChubLorebooksApiState, resetChubApiState, loadServiceIndex, getCharacterTavernApiState, resetCharacterTavernState, loadMoreCharacterTavernCards, getWyvernApiState, getWyvernLorebooksApiState, resetWyvernApiState, resetWyvernLorebooksApiState, loadMoreWyvernCards, loadMoreWyvernLorebooksWrapper } from './services/cache.js';
@@ -685,6 +685,8 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
                 console.error('[Bot Browser] Chub API search failed:', error);
+                const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
+                if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isJannyAI) {
             // For JannyAI, trigger fresh API search
@@ -733,6 +735,8 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
                 console.error('[Bot Browser] JannyAI search failed:', error);
+                const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
+                if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isCharacterTavern) {
             // For Character Tavern, trigger fresh API search
@@ -782,6 +786,8 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
                 console.error('[Bot Browser] Character Tavern search failed:', error);
+                const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
+                if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isWyvern) {
             // For Wyvern, trigger fresh API search
@@ -834,6 +840,8 @@ function setupBrowserEventListeners(menuContent, state, extensionName, extension
                 renderPage(state, menuContent, showCardDetailFunc, extensionName, extension_settings);
             } catch (error) {
                 console.error('[Bot Browser] Wyvern search failed:', error);
+                const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
+                if (gridContainer) gridContainer.innerHTML = createErrorStateHTML(error.message);
             }
         } else if (state.isAllSources && state.filters.search.trim()) {
             // For All Sources with a search query, query live APIs in parallel with local search

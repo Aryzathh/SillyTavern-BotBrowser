@@ -2,7 +2,16 @@ import { escapeHTML, sanitizeImageUrl } from '../utils/utils.js';
 
 export function createCardGrid(cards, initialBatchSize = 50, startIndex = 0) {
     if (cards.length === 0) {
-        return '<div class="bot-browser-no-results">No cards found matching your filters.</div>';
+        return `
+            <div class="bot-browser-empty-state">
+                <div class="bot-browser-empty-icon">
+                    <i class="fa-solid fa-ghost"></i>
+                </div>
+                <h3>No Characters Found</h3>
+                <p>We couldn't find any cards matching your current filters or search terms.</p>
+                <button class="bot-browser-clear-filters-btn"><i class="fa-solid fa-filter-circle-xmark"></i> Clear Filters</button>
+            </div>
+        `;
     }
 
     const cardsHTML = cards.map(card => createCardHTML(card)).join('');
@@ -683,6 +692,34 @@ export function createBulkActionBar() {
                     <i class="fa-solid fa-download"></i> Import Selected
                 </button>
             </div>
+        </div>
+    `;
+}
+
+// Create empty bookmarks state HTML
+export function createEmptyBookmarksHTML() {
+    return `
+        <div class="bot-browser-empty-state">
+            <div class="bot-browser-empty-icon">
+                <i class="fa-regular fa-bookmark"></i>
+            </div>
+            <h3>No Bookmarks Yet</h3>
+            <p>You haven't saved any characters to your bookmarks.</p>
+            <span>Click the bookmark icon on any card to save it here for quick access later.</span>
+        </div>
+    `;
+}
+
+// Create an error state block
+export function createErrorStateHTML(errorMessage, retryFunctionCode = null) {
+    return `
+        <div class="bot-browser-error-state">
+            <div class="bot-browser-error-icon">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3>Connection Failed</h3>
+            <p>${escapeHTML(errorMessage || 'There was an issue communicating with the server.')}</p>
+            ${retryFunctionCode ? `<button class="bot-browser-retry-btn" onclick="${retryFunctionCode}"><i class="fa-solid fa-rotate-right"></i> Try Again</button>` : ''}
         </div>
     `;
 }
