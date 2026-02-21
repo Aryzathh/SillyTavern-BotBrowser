@@ -23,9 +23,9 @@ const PROXY_CONFIGS = {
         rateLimit: 'Free, no CORS restrictions'
     },
     [PROXY_TYPES.CORSPROXY_IO]: {
-        name: 'corsproxy.io',
-        buildUrl: (targetUrl) => `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
-        rateLimit: 'Unknown, prone to 429 errors'
+        name: 'Custom Cloudflare Proxy (Local)',
+        buildUrl: (targetUrl) => `http://localhost:8787/?url=${encodeURIComponent(targetUrl)}`,
+        rateLimit: 'Self-hosted, highly reliable'
     },
     [PROXY_TYPES.CORS_LOL]: {
         name: 'cors.lol',
@@ -446,4 +446,4 @@ export function preloadPuter() {
 }
 
 // Legacy exports for backward compatibility
-export const CORS_PROXY = 'https://corsproxy.io/?url=';
+export const CORS_PROXY = 'http://localhost:8787/?url=';
