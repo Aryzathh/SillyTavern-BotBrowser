@@ -213,6 +213,12 @@ function loadSettings() {
             }
         }
     }
+
+    // Set custom proxy global if present
+    const customProxyUrl = (extension_settings[extensionName].customProxyUrl || '').trim();
+    if (customProxyUrl) {
+        window.__BOT_BROWSER_CUSTOM_PROXY = customProxyUrl;
+    }
 }
 
 // Apply blur setting to all card images
@@ -2258,6 +2264,29 @@ function showSettingsModal() {
                                    value="${settings.quillgenApiKey || ''}"
                                    style="width: 100%; font-family: monospace;">
                         </div>
+
+                        <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+
+                        <div class="bb-setting-group" style="text-align: center;">
+                            <div style="display: inline-block; background: linear-gradient(135deg, #f6821f, #d15600); border-radius: 8px; padding: 8px 16px; margin-bottom: 10px;">
+                                <span style="font-size: 18px; font-weight: bold; color: #fff;">Cloudflare Proxy</span>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <strong style="color: rgba(255,255,255,0.9);">Custom Backend Proxy</strong>
+                            </div>
+                            <small style="color: rgba(255,255,255,0.6); display: block; margin-bottom: 15px;">
+                                Deploy your own Cloudflare Worker to bypass CORS restrictions without public limits.
+                            </small>
+                        </div>
+
+                        <div class="bb-setting-group">
+                            <label for="bb-setting-custom-proxy"><i class="fa-solid fa-server"></i> Custom Proxy URL (optional):</label>
+                            <input type="text" id="bb-setting-custom-proxy" class="text_pole" 
+                                   placeholder="e.g. https://my-proxy.worker.dev" 
+                                   value="\"
+                                   style="width: 100%; font-family: monospace;">
+                            <small style="display: block; margin-top: 5px;">Leave empty to use the default fallbacks (corsproxy.io, puter)</small>
+                        </div>
                     </div>
                 </div>
 
@@ -2383,6 +2412,14 @@ function showSettingsModal() {
         // QuillGen settings
         const oldApiKey = settings.quillgenApiKey;
         settings.quillgenApiKey = document.getElementById('bb-setting-quillgen-key').value.trim();
+
+        // Custom Proxy URL
+        settings.customProxyUrl = document.getElementById('bb-setting-custom-proxy').value.trim();
+        if (settings.customProxyUrl) {
+            window.__BOT_BROWSER_CUSTOM_PROXY = settings.customProxyUrl;
+        } else {
+            delete window.__BOT_BROWSER_CUSTOM_PROXY;
+        }
 
         // Clear QuillGen cache if settings changed
         if (oldApiKey !== settings.quillgenApiKey) {

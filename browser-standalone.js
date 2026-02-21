@@ -593,6 +593,14 @@ function applySettings() {
     document.body.classList.toggle('blur-all-cards', state.settings.blurCards);
     document.body.classList.toggle('blur-nsfw-cards', state.settings.blurNsfw);
 
+    // Apply Custom Proxy URL
+    const customProxy = (state.settings.customProxyUrl || '').toString().trim();
+    if (customProxy) {
+        window.__BOT_BROWSER_CUSTOM_PROXY = customProxy;
+    } else {
+        delete window.__BOT_BROWSER_CUSTOM_PROXY;
+    }
+
     // Apply optional service auth headers (used by proxiedFetch in corsProxy.js)
     try {
         const raw = (state.settings.authHeadersJson || '').toString().trim();
@@ -5571,6 +5579,8 @@ function setupSettings() {
         state.settings.useCharacterTavernLiveApi = document.getElementById('settingCTLive')?.checked || false;
         state.settings.useWyvernLiveApi = document.getElementById('settingWyvernLive')?.checked ?? true;
         state.settings.useRisuRealmLiveApi = document.getElementById('settingRisuRealmLive')?.checked ?? true;
+        
+        state.settings.customProxyUrl = (document.getElementById('settingCustomProxyUrl')?.value || '').trim();
 
         saveSettings();
         applySettings();
@@ -5627,6 +5637,10 @@ function showSettingsModal() {
     document.getElementById('settingWyvernLive').checked = state.settings.useWyvernLiveApi ?? true;
     document.getElementById('settingRisuRealmLive').checked = state.settings.useRisuRealmLiveApi ?? true;
     document.getElementById('settingAuthHeadersJson').value = state.settings.authHeadersJson || '';
+    
+    if (document.getElementById('settingCustomProxyUrl')) {
+        document.getElementById('settingCustomProxyUrl').value = state.settings.customProxyUrl || '';
+    }
 
     // ChubAI Token
     const chubTokenInput = document.getElementById('settingChubToken');

@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
  * Available CORS proxy types
  */
 export const PROXY_TYPES = {
+    CUSTOM: 'custom',
     PUTER: 'puter',
     CORSPROXY_IO: 'corsproxy_io',
     CORS_LOL: 'cors_lol',
@@ -17,15 +18,24 @@ export const PROXY_TYPES = {
  * Each proxy has different rate limits and compatibility
  */
 const PROXY_CONFIGS = {
+    [PROXY_TYPES.CUSTOM]: {
+        name: 'Custom Cloudflare Proxy',
+        buildUrl: (targetUrl) => {
+            const customUrl = typeof window !== 'undefined' ? window.__BOT_BROWSER_CUSTOM_PROXY : null;
+            if (!customUrl) return null;
+            return `${customUrl.replace(/\/$/, '')}/?url=${encodeURIComponent(targetUrl)}`;
+        },
+        rateLimit: 'Custom'
+    },
     [PROXY_TYPES.PUTER]: {
         name: 'Puter.js Fetch',
         buildUrl: null, // Puter uses its own fetch method (puter.net.fetch)
         rateLimit: 'Free, no CORS restrictions'
     },
     [PROXY_TYPES.CORSPROXY_IO]: {
-        name: 'Custom Cloudflare Proxy (Local)',
-        buildUrl: (targetUrl) => `http://localhost:8787/?url=${encodeURIComponent(targetUrl)}`,
-        rateLimit: 'Self-hosted, highly reliable'
+        name: 'corsproxy.io',
+        buildUrl: (targetUrl) => `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+        rateLimit: 'Often rate-limited'
     },
     [PROXY_TYPES.CORS_LOL]: {
         name: 'cors.lol',
@@ -46,39 +56,39 @@ const PROXY_CONFIGS = {
  */
 const SERVICE_PROXY_MAP = {
     // JannyAI (Cloudflare) - try corsproxy.io first to avoid Puter noise when it works
-    jannyai: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
-    jannyai_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
+    jannyai: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
+    jannyai_trending: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.CORS_LOL, PROXY_TYPES.PUTER],
 
     // Character Tavern - corsproxy.io first, then Puter, then cors.lol
-    character_tavern: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    character_tavern_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    character_tavern: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    character_tavern_trending: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // Wyvern - corsproxy.io first, then Puter, then cors.lol
-    wyvern: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    wyvern_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    wyvern: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    wyvern_trending: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // Chub - avoid direct attempts to prevent noisy CORS console errors; proxies are required for many endpoints.
-    chub: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    chub_gateway: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    chub_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    chub: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    chub_gateway: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    chub_trending: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // RisuRealm - corsproxy.io first, then Puter, then cors.lol
-    risuai_realm: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    risuai_realm_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    risuai_realm: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    risuai_realm_trending: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // MLPChag (neocities) - CORS is allowed; do not proxy by default.
     mlpchag: [PROXY_TYPES.NONE],
 
     // Backyard.ai - corsproxy.io first, then cors.lol, then Puter
-    backyard: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    backyard_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    backyard: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    backyard_trending: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // Pygmalion.chat - direct fetch often fails CORS; use proxies to avoid preflight errors in console.
-    pygmalion: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
-    pygmalion_trending: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    pygmalion: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
+    pygmalion_trending: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER],
 
     // Default fallback chain
-    default: [PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER]
+    default: [PROXY_TYPES.CUSTOM, PROXY_TYPES.CORSPROXY_IO, PROXY_TYPES.PUTER]
 };
 
 const PUTER_CDN_URL = 'https://js.puter.com/v2/';
