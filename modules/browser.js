@@ -1956,8 +1956,13 @@ async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailF
             });
             if (error) throw new Error('Failed to load Chub API');
             
-            const serviceIndex = loadedData.serviceIndexes[state.isLorebooks ? "chub_lorebooks" : "chub"] || [];
-            state.currentCards = serviceIndex;
+            // Loaded cards logic is handled in applyClientSideFilters.
+            // But we must update the state.currentCards to reflect the loaded cards from cache
+            const chubService = state.isLorebooks ? "chub_lorebooks" : "chub";
+            const serviceIndex = (window.botBrowserLoadedData && window.botBrowserLoadedData.serviceIndexes[chubService]) || [];
+            if (serviceIndex.length > 0) {
+                state.currentCards = serviceIndex;
+            }
             
         } else if (state.isJannyAI) {
             jannyApiState.page++;
@@ -2081,9 +2086,12 @@ async function fetchApiDataForInfiniteScroll(state, menuContent, showCardDetailF
     } catch (error) {
         console.error('[Bot Browser] Infinite Scroll API Fetch Error:', error);
         toastr.error('Failed to load next page');
-        const sentinel = gridContainer.querySelector('.bot-browser-infinite-scroll-sentinel');
-        if (sentinel) {
-            sentinel.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> <span>Failed to load. Scroll to try again.</span>';
+        const gridContainer = menuContent.querySelector('.bot-browser-card-grid');
+        if (gridContainer) {
+            const sentinel = gridContainer.querySelector('.bot-browser-infinite-scroll-sentinel');
+            if (sentinel) {
+                sentinel.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> <span>Failed to load. Scroll to try again.</span>';
+            }
         }
     }
 }
